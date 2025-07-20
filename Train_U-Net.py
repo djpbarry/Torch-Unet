@@ -33,7 +33,7 @@ class CrosstalkDataset(Dataset):
         for i in range(len(self.mixed_channel_filenames)):
             mixed_base = '_'.join(self.mixed_channel_filenames[i].split('_')[:-1])
             source_base = '_'.join(self.pure_source_filenames[i].split('_')[:-1])
-            label_base = '_'.join(self.label_filenames[i].split('_')[:-1])
+            label_base = '_'.join(self.label_filenames[i].split('_')[:-2])
 
             if not (mixed_base == source_base == label_base):
                 raise ValueError(
