@@ -144,7 +144,7 @@ if __name__ == "__main__":
 
     # --- Hyperparameters ---
     BATCH_SIZE = 256
-    LEARNING_RATE = 0.001
+    LEARNING_RATE = 0.01
     NUM_EPOCHS = 500
     U_NET_IN_CHANNELS = 2
     U_NET_OUT_CHANNELS = 1
@@ -201,10 +201,10 @@ if __name__ == "__main__":
 
     # --- Create dataloaders for training, validation, and testing ---
     train_dataloader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True,
-                                  num_workers=os.cpu_count() // 2 or 1)
-    val_dataloader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=os.cpu_count() // 2 or 1)
+                                  num_workers=6)
+    val_dataloader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=6)
     test_dataloader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False,
-                                 num_workers=os.cpu_count() // 2 or 1)  # Test set not shuffled
+                                 num_workers=6)  # Test set not shuffled
 
     print("Dataloaders created for training, validation, and testing.")
 
