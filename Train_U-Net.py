@@ -165,7 +165,7 @@ if __name__ == "__main__":
     try:
         model = torch.hub.load('mateuszbuda/brain-segmentation-pytorch', 'unet',
                                in_channels=U_NET_IN_CHANNELS, out_channels=U_NET_OUT_CHANNELS,
-                               init_features=32, pretrained=True)
+                               pretrained=False)
         print("U-Net model loaded successfully with 2 input channels.")
     except Exception as e:
         print(f"Error loading U-Net from PyTorch Hub: {e}")
