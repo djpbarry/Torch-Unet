@@ -1,13 +1,16 @@
+import os
+
+import imageio.v3 as iio
+import matplotlib.pyplot as plt
+import numpy as np
 import torch
+import torch.cuda.amp as amp
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import Dataset, DataLoader, random_split
-import numpy as np
-import imageio.v3 as iio
-import os
-from tqdm import tqdm
-import matplotlib.pyplot as plt
 import torchvision.transforms as T
+from torch.utils.data import Dataset, DataLoader, random_split
+from tqdm import tqdm
+
 
 # --- 1. Custom PyTorch Dataset for your Crosstalk Data ---
 class CrosstalkDataset(Dataset):
@@ -15,6 +18,7 @@ class CrosstalkDataset(Dataset):
     Custom PyTorch Dataset for loading (mixed_channel, pure_source_channel) as input
     and crosstalk ground truth map as label.
     """
+
     def __init__(self, mixed_channel_dir, pure_source_dir, label_dir, target_size):
         self.mixed_channel_dir = mixed_channel_dir
         self.pure_source_dir = pure_source_dir
@@ -43,7 +47,6 @@ class CrosstalkDataset(Dataset):
                     f"Label: {self.label_filenames[i]}"
                 )
         print(f"Found {len(self.mixed_channel_filenames)} matching samples.")
-
 
     def __len__(self):
         return len(self.mixed_channel_filenames)
@@ -78,54 +81,54 @@ class CrosstalkDataset(Dataset):
 
         return input_tensor, label_tensor
 
+
 # --- 2. Training Function ---
 def train_model(model, train_dataloader, val_dataloader, criterion, optimizer, num_epochs, device):
-    """
-    Handles the training loop for the U-Net model with validation.
-    """
     model.to(device)
+    scaler = amp.GradScaler()  # For mixed precision training
 
     for epoch in range(num_epochs):
-        # Training phase
         model.train()
         running_loss = 0.0
-        for inputs, labels in tqdm(train_dataloader, desc=f"Epoch {epoch+1}/{num_epochs} [Train]"):
-            inputs = inputs.to(device)
-            labels = labels.to(device)
+
+        for inputs, labels in tqdm(train_dataloader, desc=f"Epoch {epoch + 1}/{num_epochs} [Train]"):
+            inputs = inputs.to(device, non_blocking=True)
+            labels = labels.to(device, non_blocking=True)
 
             optimizer.zero_grad()
-            outputs = model(inputs)
 
-            if outputs.shape != labels.shape:
-                outputs = nn.functional.interpolate(outputs, size=labels.shape[2:], mode='bilinear', align_corners=False)
+            with amp.autocast():
+                outputs = model(inputs)
+                if outputs.shape != labels.shape:
+                    outputs = nn.functional.interpolate(outputs, size=labels.shape[2:], mode='bilinear',
+                                                        align_corners=False)
+                loss = criterion(outputs, labels)
 
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
 
             running_loss += loss.item() * inputs.size(0)
 
         epoch_train_loss = running_loss / len(train_dataloader.dataset)
-        print(f"Epoch {epoch+1} Train Loss: {epoch_train_loss:.6f}")
+        print(f"Epoch {epoch + 1} Train Loss: {epoch_train_loss:.6f}")
 
         # Validation phase
         model.eval()
         val_running_loss = 0.0
         with torch.no_grad():
-            for inputs, labels in tqdm(val_dataloader, desc=f"Epoch {epoch+1}/{num_epochs} [Val]"):
-                inputs = inputs.to(device)
-                labels = labels.to(device)
-
+            for inputs, labels in tqdm(val_dataloader, desc=f"Epoch {epoch + 1}/{num_epochs} [Val]"):
+                inputs = inputs.to(device, non_blocking=True)
+                labels = labels.to(device, non_blocking=True)
                 outputs = model(inputs)
-
                 if outputs.shape != labels.shape:
-                    outputs = nn.functional.interpolate(outputs, size=labels.shape[2:], mode='bilinear', align_corners=False)
-
+                    outputs = nn.functional.interpolate(outputs, size=labels.shape[2:], mode='bilinear',
+                                                        align_corners=False)
                 loss = criterion(outputs, labels)
                 val_running_loss += loss.item() * inputs.size(0)
 
         epoch_val_loss = val_running_loss / len(val_dataloader.dataset)
-        print(f"Epoch {epoch+1} Validation Loss: {epoch_val_loss:.6f}")
+        print(f"Epoch {epoch + 1} Validation Loss: {epoch_val_loss:.6f}")
 
 
 # --- 3. Main Execution Block (MODIFIED for train/val/test split) ---
@@ -140,21 +143,22 @@ if __name__ == "__main__":
     label_data_dir = "/nemo/stp/lm/working/barryd/IDR/Cross-Talk-Training-Data/output/ground_truth"
 
     # --- Hyperparameters ---
-    BATCH_SIZE = 4
+    BATCH_SIZE = 256
     LEARNING_RATE = 0.001
-    NUM_EPOCHS = 50
+    NUM_EPOCHS = 500
     U_NET_IN_CHANNELS = 2
     U_NET_OUT_CHANNELS = 1
-    TARGET_IMAGE_SIZE = (256, 256) # Adjust this value based on your image sizes!
+    TARGET_IMAGE_SIZE = (256, 256)  # Adjust this value based on your image sizes!
 
     # --- Data split ratios (NEW: added TEST_RATIO) ---
-    TRAIN_RATIO = 0.7 # 70% for training
-    VAL_RATIO = 0.15 # 15% for validation
-    TEST_RATIO = 0.15 # 15% for testing
+    TRAIN_RATIO = 0.7  # 70% for training
+    VAL_RATIO = 0.15  # 15% for validation
+    TEST_RATIO = 0.15  # 15% for testing
     # Ensure TRAIN_RATIO + VAL_RATIO + TEST_RATIO sums to 1.0 (or close to it due to float precision)
 
     if not (TRAIN_RATIO + VAL_RATIO + TEST_RATIO == 1.0):
-        print("Warning: Sum of TRAIN_RATIO, VAL_RATIO, TEST_RATIO does not equal 1.0. Data might be left out or sizes might be adjusted.")
+        print(
+            "Warning: Sum of TRAIN_RATIO, VAL_RATIO, TEST_RATIO does not equal 1.0. Data might be left out or sizes might be adjusted.")
 
     # --- Load U-Net Model from PyTorch Hub ---
     print("\nLoading U-Net model from PyTorch Hub...")
@@ -165,13 +169,15 @@ if __name__ == "__main__":
         print("U-Net model loaded successfully with 2 input channels.")
     except Exception as e:
         print(f"Error loading U-Net from PyTorch Hub: {e}")
-        print("Please ensure you have internet connectivity or that 'mateuszbuda/brain-segmentation-pytorch' is cached locally by PyTorch Hub.")
+        print(
+            "Please ensure you have internet connectivity or that 'mateuszbuda/brain-segmentation-pytorch' is cached locally by PyTorch Hub.")
         exit()
 
     # --- Create full dataset ---
     print("\nCreating full dataset...")
     try:
-        full_dataset = CrosstalkDataset(mixed_channel_data_dir, pure_source_data_dir, label_data_dir, target_size=TARGET_IMAGE_SIZE)
+        full_dataset = CrosstalkDataset(mixed_channel_data_dir, pure_source_data_dir, label_data_dir,
+                                        target_size=TARGET_IMAGE_SIZE)
         print(f"Total samples loaded: {len(full_dataset)}")
     except Exception as e:
         print(f"Error creating full dataset: {e}")
@@ -186,7 +192,7 @@ if __name__ == "__main__":
     total_size = len(full_dataset)
     train_size = int(TRAIN_RATIO * total_size)
     val_size = int(VAL_RATIO * total_size)
-    test_size = total_size - train_size - val_size # The remainder goes to test
+    test_size = total_size - train_size - val_size  # The remainder goes to test
     print(f"Splitting data: Train samples = {train_size}, Validation samples = {val_size}, Test samples = {test_size}")
 
     # Ensure reproducibility of the split
@@ -194,9 +200,11 @@ if __name__ == "__main__":
     train_dataset, val_dataset, test_dataset = random_split(full_dataset, [train_size, val_size, test_size])
 
     # --- Create dataloaders for training, validation, and testing ---
-    train_dataloader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=os.cpu_count() // 2 or 1)
+    train_dataloader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True,
+                                  num_workers=os.cpu_count() // 2 or 1)
     val_dataloader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=os.cpu_count() // 2 or 1)
-    test_dataloader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, num_workers=os.cpu_count() // 2 or 1) # Test set not shuffled
+    test_dataloader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False,
+                                 num_workers=os.cpu_count() // 2 or 1)  # Test set not shuffled
 
     print("Dataloaders created for training, validation, and testing.")
 
@@ -219,7 +227,7 @@ if __name__ == "__main__":
                                   in_channels=U_NET_IN_CHANNELS, out_channels=U_NET_OUT_CHANNELS,
                                   init_features=32, pretrained=False)
     loaded_model.load_state_dict(torch.load(model_save_path, map_location=device))
-    loaded_model.eval() # Set model to evaluation mode
+    loaded_model.eval()  # Set model to evaluation mode
     loaded_model.to(device)
 
     test_running_loss = 0.0
@@ -231,7 +239,8 @@ if __name__ == "__main__":
             outputs = loaded_model(inputs)
 
             if outputs.shape != labels.shape:
-                outputs = nn.functional.interpolate(outputs, size=labels.shape[2:], mode='bilinear', align_corners=False)
+                outputs = nn.functional.interpolate(outputs, size=labels.shape[2:], mode='bilinear',
+                                                    align_corners=False)
 
             loss = criterion(outputs, labels)
             test_running_loss += loss.item() * inputs.size(0)
