@@ -1,7 +1,10 @@
 # Import necessary libraries
+
+import csv
+import os
+
 import imageio.v3 as iio
 import numpy as np
-import os
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -20,20 +23,20 @@ class CrosstalkDataset(Dataset):
         self.label_dir = label_dir
         self.transform = transform
 
-        # List all .tif files in the directories
         self.mixed_channel_filenames = sorted([f for f in os.listdir(mixed_channel_dir) if f.endswith('.tif')])
         self.pure_source_filenames = sorted([f for f in os.listdir(pure_source_dir) if f.endswith('.tif')])
         self.label_filenames = sorted([f for f in os.listdir(label_dir) if f.endswith('.tif')])
 
-        # Check if the number of files in each directory matches
         if not (len(self.mixed_channel_filenames) == len(self.pure_source_filenames) == len(self.label_filenames)):
-            raise ValueError("Number of mixed channel, pure source, and label images must be the same.")
+            raise ValueError(
+                "Number of mixed channel, pure source, and label images must be the same."
+            )
 
-        # Check if filenames match across directories
         for i in range(len(self.mixed_channel_filenames)):
             mixed_base = '_'.join(self.mixed_channel_filenames[i].split('_')[:-1])
             source_base = '_'.join(self.pure_source_filenames[i].split('_')[:-1])
             label_base = '_'.join(self.label_filenames[i].split('_')[:-2])
+
             if not (mixed_base == source_base == label_base):
                 raise ValueError(
                     f"Filename mismatch at index {i}: "
@@ -44,11 +47,9 @@ class CrosstalkDataset(Dataset):
         print(f"Found {len(self.mixed_channel_filenames)} matching samples.")
 
     def __len__(self):
-        # Return the total number of samples
         return len(self.mixed_channel_filenames)
 
     def __getitem__(self, idx):
-        # Load images from the directories
         mixed_channel_path = os.path.join(self.mixed_channel_dir, self.mixed_channel_filenames[idx])
         pure_source_path = os.path.join(self.pure_source_dir, self.pure_source_filenames[idx])
         label_path = os.path.join(self.label_dir, self.label_filenames[idx])
@@ -71,92 +72,74 @@ class CrosstalkDataset(Dataset):
         else:
             raise ValueError("No transform pipeline provided for dataset.")
 
-        # Concatenate mixed and source tensors along the channel dimension
         input_tensor = torch.cat([mixed_tensor, source_tensor], dim=0)
+
         return input_tensor, label_tensor
 
 
 # Function to train the model
 def train_model(model, train_dataloader, val_dataloader, criterion, optimizer, num_epochs, device):
-    # Move the model to the specified device (CPU or GPU)
     model.to(device)
 
-    # Loop over the dataset multiple times (based on the number of epochs)
-    for epoch in range(num_epochs):
-        # Set the model to training mode (enables dropout, batch normalization, etc.)
-        model.train()
+    # Define the log file path
+    log_file_path = "training_log.csv"
 
-        # Initialize running loss to accumulate the loss over the batches
-        running_loss = 0.0
+    # Check if the log file already exists to write headers if necessary
+    file_exists = os.path.isfile(log_file_path)
 
-        # Iterate over data batches in the training dataloader
-        for inputs, labels in tqdm(train_dataloader, desc=f"Epoch {epoch + 1}/{num_epochs} [Train]"):
-            # Move input data and labels to the specified device
-            inputs = inputs.to(device)
-            labels = labels.to(device)
+    # Open the log file in append mode
+    with open(log_file_path, mode='a', newline='') as log_file:
+        log_writer = csv.writer(log_file)
 
-            # Zero the gradients to prevent accumulation from previous batches
-            optimizer.zero_grad()
+        # Write the header if the file does not exist
+        if not file_exists:
+            log_writer.writerow(["Epoch", "Train Loss", "Validation Loss"])
 
-            # Perform the forward pass: compute predictions by passing inputs through the model
-            outputs = model(inputs)
+        # Training loop
+        for epoch in range(num_epochs):
+            model.train()
+            running_loss = 0.0
 
-            # Resize model outputs to match label dimensions if they don't match
-            if outputs.shape != labels.shape:
-                outputs = nn.functional.interpolate(outputs, size=labels.shape[2:], mode='bilinear',
-                                                    align_corners=False)
+            for inputs, labels in tqdm(train_dataloader, desc=f"Epoch {epoch + 1}/{num_epochs} [Train]"):
+                inputs = inputs.to(device, non_blocking=True)
+                labels = labels.to(device, non_blocking=True)
+                optimizer.zero_grad()
 
-            # Calculate the loss between the predicted outputs and the true labels
-            loss = criterion(outputs, labels)
-
-            # Perform the backward pass: compute gradients of the loss with respect to model parameters
-            loss.backward()
-
-            # Update the model parameters using the computed gradients
-            optimizer.step()
-
-            # Accumulate the loss for the current batch, scaled by the batch size
-            running_loss += loss.item() * inputs.size(0)
-
-        # Calculate the average training loss for the epoch
-        epoch_train_loss = running_loss / len(train_dataloader.dataset)
-
-        # Print the average training loss for the current epoch
-        print(f"Epoch {epoch + 1} Train Loss: {epoch_train_loss:.6f}")
-
-        # Set the model to evaluation mode (disables dropout, uses population statistics for batch normalization, etc.)
-        model.eval()
-
-        # Initialize running validation loss
-        val_running_loss = 0.0
-
-        # Disable gradient computation for validation to save memory and computations
-        with torch.no_grad():
-            # Iterate over data batches in the validation dataloader
-            for inputs, labels in tqdm(val_dataloader, desc=f"Epoch {epoch + 1}/{num_epochs} [Val]"):
-                # Move input data and labels to the specified device
-                inputs = inputs.to(device)
-                labels = labels.to(device)
-
-                # Perform the forward pass: compute predictions by passing inputs through the model
                 outputs = model(inputs)
-
-                # Resize model outputs to match label dimensions if they don't match
                 if outputs.shape != labels.shape:
                     outputs = nn.functional.interpolate(outputs, size=labels.shape[2:], mode='bilinear',
                                                         align_corners=False)
 
-                # Calculate the loss between the predicted outputs and the true labels
                 loss = criterion(outputs, labels)
+                loss.backward()
+                optimizer.step()
+                running_loss += loss.item() * inputs.size(0)
 
-                # Accumulate the validation loss for the current batch, scaled by the batch size
-                val_running_loss += loss.item() * inputs.size(0)
+            epoch_train_loss = running_loss / len(train_dataloader.dataset)
+            print(f"Epoch {epoch + 1} Train Loss: {epoch_train_loss:.6f}")
 
-        # Calculate the average validation loss for the epoch
-        epoch_val_loss = val_running_loss / len(val_dataloader.dataset)
+            # Validation phase
+            model.eval()
+            val_running_loss = 0.0
+            with torch.no_grad():
+                for inputs, labels in tqdm(val_dataloader, desc=f"Epoch {epoch + 1}/{num_epochs} [Val]"):
+                    inputs = inputs.to(device, non_blocking=True)
+                    labels = labels.to(device, non_blocking=True)
+                    outputs = model(inputs)
+                    if outputs.shape != labels.shape:
+                        outputs = nn.functional.interpolate(outputs, size=labels.shape[2:], mode='bilinear',
+                                                            align_corners=False)
+                    loss = criterion(outputs, labels)
+                    val_running_loss += loss.item() * inputs.size(0)
 
-        # Print the average validation loss for the current epoch
-        print(f"Epoch {epoch + 1} Validation Loss: {epoch_val_loss:.6f}")
+            epoch_val_loss = val_running_loss / len(val_dataloader.dataset)
+            print(f"Epoch {epoch + 1} Validation Loss: {epoch_val_loss:.6f}")
+
+            # Log the losses to the CSV file
+            log_writer.writerow([epoch + 1, epoch_train_loss, epoch_val_loss])
+            log_file.flush()  # Ensure data is written to the file immediately
+
+    print("Training complete. Losses logged to training_log.csv.")
 
 
 # Function to get training transformations
@@ -191,10 +174,6 @@ def get_train_transforms(target_size):
         source_tensor = final_transform(source_pil)
         label_tensor = final_transform(label_pil)
 
-        # Normalize each image by its own mean and std
-        mixed_tensor = (mixed_tensor - mixed_tensor.mean()) / mixed_tensor.std()
-        source_tensor = (source_tensor - source_tensor.mean()) / source_tensor.std()
-        label_tensor = (label_tensor - label_tensor.mean()) / label_tensor.std()
         return mixed_tensor, source_tensor, label_tensor
 
     return lambda mixed_pil, source_pil, label_pil: train_transforms_fn(mixed_pil, source_pil, label_pil, target_size)
@@ -209,11 +188,6 @@ def get_val_test_transforms(target_size):
         source_tensor = TF.to_tensor(source_tensor)
         label_tensor = TF.resize(label_pil, target_size)
         label_tensor = TF.to_tensor(label_tensor)
-
-        # Normalize each image by its own mean and std
-        mixed_tensor = (mixed_tensor - mixed_tensor.mean()) / mixed_tensor.std()
-        source_tensor = (source_tensor - source_tensor.mean()) / source_tensor.std()
-        label_tensor = (label_tensor - label_tensor.mean()) / label_tensor.std()
 
         return mixed_tensor, source_tensor, label_tensor
 
@@ -239,10 +213,9 @@ if __name__ == "__main__":
     TARGET_IMAGE_SIZE = (256, 256)
     TRAIN_RATIO = 0.7
     VAL_RATIO = 0.15
-    TEST_RATIO = 0.15
 
     # Check if ratios sum to 1
-    if not (abs(TRAIN_RATIO + VAL_RATIO + TEST_RATIO - 1.0) < 1e-6):
+    if not (abs(TRAIN_RATIO + VAL_RATIO) < 1.0):
         print(
             "Warning: Sum of TRAIN_RATIO, VAL_RATIO, TEST_RATIO does not equal 1.0. Data might be left out or sizes might be adjusted.")
 
