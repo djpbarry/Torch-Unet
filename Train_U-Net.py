@@ -1,8 +1,7 @@
 # Import necessary libraries
-import os
-
 import imageio.v3 as iio
 import numpy as np
+import os
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -182,6 +181,7 @@ def get_train_transforms(target_size):
         # color_jitter = T.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1)
         # mixed_pil = color_jitter(mixed_pil)
         # source_pil = color_jitter(source_pil)
+
         # Final transform to resize and convert to tensor
         final_transform = T.Compose([
             T.Resize(current_target_size),
@@ -190,22 +190,34 @@ def get_train_transforms(target_size):
         mixed_tensor = final_transform(mixed_pil)
         source_tensor = final_transform(source_pil)
         label_tensor = final_transform(label_pil)
+
+        # Normalize each image by its own mean and std
+        mixed_tensor = (mixed_tensor - mixed_tensor.mean()) / mixed_tensor.std()
+        source_tensor = (source_tensor - source_tensor.mean()) / source_tensor.std()
+        label_tensor = (label_tensor - label_tensor.mean()) / label_tensor.std()
         return mixed_tensor, source_tensor, label_tensor
 
     return lambda mixed_pil, source_pil, label_pil: train_transforms_fn(mixed_pil, source_pil, label_pil, target_size)
 
 
-# Function to get validation and test transformations
 def get_val_test_transforms(target_size):
-    final_transform_default = T.Compose([
-        T.Resize(target_size),
-        T.ToTensor()
-    ])
-    return lambda mixed_pil, source_pil, label_pil: (
-        final_transform_default(mixed_pil),
-        final_transform_default(source_pil),
-        final_transform_default(label_pil)
-    )
+    def val_test_transforms_fn(mixed_pil, source_pil, label_pil):
+        # Convert PIL images to tensors
+        mixed_tensor = TF.resize(mixed_pil, target_size)
+        mixed_tensor = TF.to_tensor(mixed_tensor)
+        source_tensor = TF.resize(source_pil, target_size)
+        source_tensor = TF.to_tensor(source_tensor)
+        label_tensor = TF.resize(label_pil, target_size)
+        label_tensor = TF.to_tensor(label_tensor)
+
+        # Normalize each image by its own mean and std
+        mixed_tensor = (mixed_tensor - mixed_tensor.mean()) / mixed_tensor.std()
+        source_tensor = (source_tensor - source_tensor.mean()) / source_tensor.std()
+        label_tensor = (label_tensor - label_tensor.mean()) / label_tensor.std()
+
+        return mixed_tensor, source_tensor, label_tensor
+
+    return lambda mixed_pil, source_pil, label_pil: val_test_transforms_fn(mixed_pil, source_pil, label_pil)
 
 
 if __name__ == "__main__":
