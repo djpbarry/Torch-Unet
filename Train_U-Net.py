@@ -161,9 +161,9 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    mixed_channel_data_dir = "/nemo/stp/lm/working/barryd/IDR/Cross-Talk-Training-Data/bleed"
-    pure_source_data_dir = "/nemo/stp/lm/working/barryd/IDR/Cross-Talk-Training-Data/source"
-    label_data_dir = "/nemo/stp/lm/working/barryd/IDR/Cross-Talk-Training-Data/ground_truth"
+    mixed_channel_data_dir = "/nemo/stp/lm/working/barryd/IDR/crosstalk_training_data/bleed"
+    pure_source_data_dir = "/nemo/stp/lm/working/barryd/IDR/crosstalk_training_data/source"
+    label_data_dir = "/nemo/stp/lm/working/barryd/IDR/crosstalk_training_data/ground_truth"
 
     BATCH_SIZE = 256
     LEARNING_RATE = 0.01
