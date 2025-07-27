@@ -1,24 +1,20 @@
-import urllib
-
-import matplotlib.pyplot as plt
 import numpy as np
+import tifffile  # Make sure to install this library using pip install tifffile
 import torch
 from PIL import Image
 from torchvision import transforms
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model_save_path = "Z:/working/barryd/hpc/python/Torch-Unet/crosstalk_detection_unet_2input_trained.pth"
 model = torch.hub.load('mateuszbuda/brain-segmentation-pytorch', 'unet',
-                       in_channels=2, out_channels=1, init_features=32, pretrained=False)
+                       in_channels=2, out_channels=1,
+                       init_features=32, pretrained=False)
+model.load_state_dict(torch.load(model_save_path, map_location=device))
+model.eval()
+model.to(device)
 
-# Download an example image
-# url, filename = ("https://github.com/mateuszbuda/brain-segmentation-pytorch/raw/master/assets/TCGA_CS_4944.png",
-#                  "TCGA_CS_4944.png")
-filename_1 = "./C1-test.tif"
+filename_1 = "./C1-test-2.tif"
 filename_2 = "./C2-test.tif"
-
-# try:
-#     urllib.URLopener().retrieve(url, filename)
-# except:
-#     urllib.request.urlretrieve(url, filename)
 
 input_image_1 = Image.open(filename_1)
 input_image_2 = Image.open(filename_2)
@@ -46,9 +42,10 @@ if torch.cuda.is_available():
 with torch.no_grad():
     output = model(input_batch)
 
-print(output[0])
+# Convert the output tensor to a numpy array
+output_np = output.cpu().squeeze().numpy()
 
-# Display the thumbnail using Matplotlib
-plt.imshow(output[0, 0])
-plt.axis('off')  # Turn off axis numbers and ticks
-plt.show()
+# Save the output as a TIF file
+tifffile.imwrite('output_image-2.tif', output_np)
+
+print("Output saved as output_image.tif")
