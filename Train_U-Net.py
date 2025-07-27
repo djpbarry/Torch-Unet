@@ -1,14 +1,15 @@
 import csv
 import os
+
 import imageio.v3 as iio
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import torchvision.transforms as T
 import torchvision.transforms.functional as TF
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
+
 
 # Define a custom dataset class for handling crosstalk data
 class CrosstalkDataset(Dataset):
@@ -57,6 +58,7 @@ class CrosstalkDataset(Dataset):
         input_tensor = torch.cat([mixed_tensor, source_tensor], dim=0)
         return input_tensor, label_tensor
 
+
 def get_train_transforms(target_size):
     def train_transforms_fn(mixed_np, source_np, label_np):
         mixed_tensor = torch.from_numpy(mixed_np).unsqueeze(0)
@@ -78,14 +80,15 @@ def get_train_transforms(target_size):
         # source_tensor = TF.rotate(source_tensor, angle)
         # label_tensor = TF.rotate(label_tensor, angle)
 
-        resize_transform = T.Resize(target_size)
-        mixed_tensor = resize_transform(mixed_tensor)
-        source_tensor = resize_transform(source_tensor)
-        label_tensor = resize_transform(label_tensor)
+        # resize_transform = T.Resize(target_size)
+        # mixed_tensor = resize_transform(mixed_tensor)
+        # source_tensor = resize_transform(source_tensor)
+        # label_tensor = resize_transform(label_tensor)
 
         return mixed_tensor, source_tensor, label_tensor
 
     return train_transforms_fn
+
 
 def get_val_test_transforms(target_size):
     def val_test_transforms_fn(mixed_np, source_np, label_np):
@@ -93,14 +96,15 @@ def get_val_test_transforms(target_size):
         source_tensor = torch.from_numpy(source_np).unsqueeze(0)
         label_tensor = torch.from_numpy(label_np).unsqueeze(0)
 
-        resize_transform = T.Resize(target_size)
-        mixed_tensor = resize_transform(mixed_tensor)
-        source_tensor = resize_transform(source_tensor)
-        label_tensor = resize_transform(label_tensor)
+        # resize_transform = T.Resize(target_size)
+        # mixed_tensor = resize_transform(mixed_tensor)
+        # source_tensor = resize_transform(source_tensor)
+        # label_tensor = resize_transform(label_tensor)
 
         return mixed_tensor, source_tensor, label_tensor
 
     return val_test_transforms_fn
+
 
 def train_model(model, train_dataloader, val_dataloader, criterion, optimizer, num_epochs, device):
     model.to(device)
@@ -121,7 +125,8 @@ def train_model(model, train_dataloader, val_dataloader, criterion, optimizer, n
                 optimizer.zero_grad()
                 outputs = model(inputs)
                 if outputs.shape != labels.shape:
-                    outputs = nn.functional.interpolate(outputs, size=labels.shape[2:], mode='bilinear', align_corners=False)
+                    outputs = nn.functional.interpolate(outputs, size=labels.shape[2:], mode='bilinear',
+                                                        align_corners=False)
                 loss = criterion(outputs, labels)
                 loss.backward()
                 optimizer.step()
@@ -138,7 +143,8 @@ def train_model(model, train_dataloader, val_dataloader, criterion, optimizer, n
                     labels = labels.to(device, non_blocking=True)
                     outputs = model(inputs)
                     if outputs.shape != labels.shape:
-                        outputs = nn.functional.interpolate(outputs, size=labels.shape[2:], mode='bilinear', align_corners=False)
+                        outputs = nn.functional.interpolate(outputs, size=labels.shape[2:], mode='bilinear',
+                                                            align_corners=False)
                     loss = criterion(outputs, labels)
                     val_running_loss += loss.item() * inputs.size(0)
 
@@ -150,6 +156,7 @@ def train_model(model, train_dataloader, val_dataloader, criterion, optimizer, n
 
     print("Training complete. Losses logged to training_log.csv.")
 
+
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
@@ -159,7 +166,7 @@ if __name__ == "__main__":
     label_data_dir = "/nemo/stp/lm/working/barryd/IDR/Cross-Talk-Training-Data/output/ground_truth"
 
     BATCH_SIZE = 256
-    LEARNING_RATE = 0.0001
+    LEARNING_RATE = 0.01
     NUM_EPOCHS = 50
     U_NET_IN_CHANNELS = 2
     U_NET_OUT_CHANNELS = 1
@@ -206,6 +213,7 @@ if __name__ == "__main__":
     test_indices = shuffled_indices[train_size + val_size:]
     print(f"Split sizes: Train = {len(train_indices)}, Validation = {len(val_indices)}, Test = {len(test_indices)}")
 
+
     class SplitCrosstalkDataset(Dataset):
         def __init__(self, mixed_channel_dir, pure_source_dir, label_dir, transform, indices,
                      all_mixed_filenames, all_source_filenames, all_label_filenames):
@@ -241,6 +249,7 @@ if __name__ == "__main__":
             mixed_tensor, source_tensor, label_tensor = self.transform(mixed_image_np, source_image_np, label_image_np)
             input_tensor = torch.cat([mixed_tensor, source_tensor], dim=0)
             return input_tensor, label_tensor
+
 
     train_dataset_final = SplitCrosstalkDataset(
         mixed_channel_data_dir, pure_source_data_dir, label_data_dir,
@@ -321,7 +330,8 @@ if __name__ == "__main__":
             labels = labels.to(device)
             outputs = loaded_model(inputs)
             if outputs.shape != labels.shape:
-                outputs = nn.functional.interpolate(outputs, size=labels.shape[2:], mode='bilinear', align_corners=False)
+                outputs = nn.functional.interpolate(outputs, size=labels.shape[2:], mode='bilinear',
+                                                    align_corners=False)
             loss = criterion(outputs, labels)
             test_running_loss += loss.item() * inputs.size(0)
 
