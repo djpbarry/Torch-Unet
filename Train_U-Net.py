@@ -233,10 +233,10 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    mixed_channel_data_dir = "/nemo/stp/lm/working/barryd/IDR/crosstalk_training_data/bleed"
-    pure_source_data_dir = "/nemo/stp/lm/working/barryd/IDR/crosstalk_training_data/source"
+    mixed_channel_data_dir = "/nemo/stp/lm/working/barryd/IDR/crosstalk_training_data_2/bleed"
+    pure_source_data_dir = "/nemo/stp/lm/working/barryd/IDR/crosstalk_training_data_2/source"
 
-    BATCH_SIZE = 256
+    BATCH_SIZE = 16
     LEARNING_RATE = 0.001
     NUM_EPOCHS = 50
     TARGET_IMAGE_SIZE = (256, 256)

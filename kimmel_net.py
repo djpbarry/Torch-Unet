@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 
+
 class RegressionModel(nn.Module):
     def __init__(self):
         super(RegressionModel, self).__init__()
@@ -18,18 +19,6 @@ class RegressionModel(nn.Module):
             nn.Conv2d(224, 112, kernel_size=3, stride=1, padding=1),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2, stride=2),
-
-            nn.Conv2d(112, 144, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, stride=2),
-
-            nn.Conv2d(144, 144, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, stride=2),
-
-            nn.Conv2d(144, 144, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, stride=2),
         )
 
         # Calculate the size of the flattened features
@@ -39,8 +28,11 @@ class RegressionModel(nn.Module):
         self.fc_layers = nn.Sequential(
             nn.Flatten(),
             nn.Dropout(0.5),
-            nn.Linear(conv_output_size, 1)
+            nn.Linear(conv_output_size, 1),
+            nn.Sigmoid()
         )
+
+        self.global_pool = nn.AdaptiveAvgPool2d((1, 1))
 
     def _get_conv_output(self, shape):
         # Helper method to calculate the size of the flattened features
@@ -51,6 +43,8 @@ class RegressionModel(nn.Module):
 
     def forward(self, x):
         x = self.conv_layers(x)
+        x = self.global_pool(x)
+        x = torch.flatten(x, 1)
         x = self.fc_layers(x)
         return x
 
