@@ -8,30 +8,34 @@ class RegressionModel(nn.Module):
 
         # Define the convolutional layers
         self.conv_layers = nn.Sequential(
-            nn.Conv2d(2, 128, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(2, 64, kernel_size=3, padding=1),
+            #nn.BatchNorm2d(64),
             nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, stride=2),
+            nn.MaxPool2d(2),  # down to 128x128
 
-            nn.Conv2d(128, 224, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(64, 128, kernel_size=3, padding=1),
+            #nn.BatchNorm2d(128),
             nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, stride=2),
+            nn.MaxPool2d(2),  # down to 64x64
 
-            nn.Conv2d(224, 112, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(128, 256, kernel_size=3, padding=1),
+            #nn.BatchNorm2d(256),
             nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2, stride=2),
+            nn.MaxPool2d(2),  # down to 32x32
         )
 
         # Global average pooling to reduce spatial dimensions to (1,1)
-        self.global_pool = nn.AdaptiveAvgPool2d((1, 1))
+        self.global_pool = nn.AdaptiveAvgPool2d((4, 4))
 
         # Dynamically calculate flattened feature size after conv and pooling
         conv_output_size = self._get_conv_output((256, 256))
 
         # Define the fully connected layers
         self.fc_layers = nn.Sequential(
-            nn.Dropout(0.5),
-            nn.Linear(conv_output_size, 1),
-            nn.Sigmoid()
+            nn.Dropout(0.3),
+            nn.Linear(conv_output_size, 64),
+            nn.ReLU(),
+            nn.Linear(64, 1)
         )
 
     def _get_conv_output(self, shape):
@@ -46,4 +50,4 @@ class RegressionModel(nn.Module):
         x = self.global_pool(x)
         x = torch.flatten(x, 1)  # flatten all but batch dimension
         x = self.fc_layers(x)
-        return x
+        return torch.clamp(x, 0.0, 1.0)

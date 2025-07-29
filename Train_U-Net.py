@@ -5,86 +5,75 @@ import re  # Import regex for pattern matching
 import imageio.v3 as iio
 import numpy as np
 import torch
-import torch.nn as nn
 import torch.optim as optim
 import torchvision.transforms.functional as TF
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
-
+from sklearn.metrics import r2_score
 from kimmel_net import RegressionModel
 
 
-# --- Custom Dataset Classes (MODIFIED for scalar labels from filename and improved matching) ---
+# --- Custom Dataset Classes (MODIFIED to use (image_id, alpha_value) as key) ---
 class CrosstalkDataset(Dataset):
     def __init__(self, mixed_channel_dir, pure_source_dir, transform=None):
         self.mixed_channel_dir = mixed_channel_dir
         self.pure_source_dir = pure_source_dir
         self.transform = transform
 
-        # Regex to extract the unique ID (e.g., '3126239') and the alpha value (e.g., '0.49')
+        # Regex to extract the unique ID, the alpha value, and the file type
         # This pattern works for both '_mixed.tif' and '_source.tif' files
         self.file_pattern = re.compile(r'image_(\d+)_alpha_(\d+\.?\d*)_(mixed|source)\.tif')
 
-        # Store mappings: {image_id: {alpha: value, mixed_file: path, source_file: path}}
+        # Store mappings: {(image_id, alpha_value_str): {mixed_file: path, source_file: path}}
+        # Using alpha_value_str (from regex group) as part of the key to avoid float comparison issues
         all_sample_info = {}
 
+        # Helper to process files from a directory
+        def process_files_in_dir(directory, file_type_key):
+            for filename in os.listdir(directory):
+                if filename.endswith('.tif'):
+                    match = self.file_pattern.search(filename)
+                    if match:
+                        image_id = match.group(1)
+                        alpha_value_str = match.group(2)  # Keep as string for the key
+                        file_actual_type = match.group(3)
+
+                        # Only process files that match the expected type for this directory
+                        if file_actual_type == file_type_key:
+                            compound_key = (image_id, alpha_value_str)
+                            if compound_key not in all_sample_info:
+                                all_sample_info[compound_key] = {}
+                            all_sample_info[compound_key][f'{file_type_key}_file'] = filename
+                    else:
+                        # print(f"Warning: Filename '{filename}' in {directory} did not match pattern.")
+                        pass  # Suppress frequent warnings for non-matching files
+
         # Process mixed channel files
-        for filename in os.listdir(mixed_channel_dir):
-            if filename.endswith('.tif'):
-                match = self.file_pattern.search(filename)
-                if match:
-                    image_id = match.group(1)
-                    alpha_value = float(match.group(2))
-                    file_type = match.group(3)  # 'mixed' or 'source'
-
-                    if file_type == 'mixed':
-                        if image_id not in all_sample_info:
-                            all_sample_info[image_id] = {'alpha': alpha_value, 'mixed_file': filename}
-                        else:
-                            # Basic consistency check: alpha should be same for the same ID
-                            if all_sample_info[image_id]['alpha'] != alpha_value:
-                                print(
-                                    f"Warning: Alpha mismatch for ID {image_id} (mixed). Existing: {all_sample_info[image_id]['alpha']}, New: {alpha_value}")
-                            all_sample_info[image_id]['mixed_file'] = filename  # Update in case of duplicates
-
+        process_files_in_dir(mixed_channel_dir, 'mixed')
         # Process pure source files
-        for filename in os.listdir(pure_source_dir):
-            if filename.endswith('.tif'):
-                match = self.file_pattern.search(filename)
-                if match:
-                    image_id = match.group(1)
-                    alpha_value = float(match.group(2))
-                    file_type = match.group(3)  # 'mixed' or 'source'
-
-                    if file_type == 'source':
-                        if image_id not in all_sample_info:
-                            all_sample_info[image_id] = {'alpha': alpha_value, 'source_file': filename}
-                        else:
-                            # Basic consistency check: alpha should be same for the same ID
-                            if all_sample_info[image_id]['alpha'] != alpha_value:
-                                print(
-                                    f"Warning: Alpha mismatch for ID {image_id} (source). Existing: {all_sample_info[image_id]['alpha']}, New: {alpha_value}")
-                            all_sample_info[image_id]['source_file'] = filename  # Update
+        process_files_in_dir(pure_source_dir, 'source')
 
         self.samples = []
-        for image_id, info in all_sample_info.items():
+        for (image_id, alpha_value_str), info in all_sample_info.items():
             if 'mixed_file' in info and 'source_file' in info:
                 self.samples.append({
-                    'image_id': image_id,
+                    'image_id': image_id,  # Can keep for debugging/sorting
+                    'scalar_label': float(alpha_value_str),  # Convert to float for label
                     'mixed_channel_file': info['mixed_file'],
-                    'pure_source_file': info['source_file'],
-                    'scalar_label': info['alpha']
+                    'pure_source_file': info['source_file']
                 })
-            else:
-                # print(f"Warning: Skipping ID {image_id} due to missing mixed or source file.")
-                pass  # Already printing warnings if file doesn't match regex.
+            # else:
+            # print(f"Warning: Skipping sample {(image_id, alpha_value_str)} due to missing mixed or source file.")
+            # Pass silently as this is expected for incomplete pairs.
 
         if not self.samples:
             raise ValueError(
-                "No matching samples found. Ensure filenames adhere to 'image_ID_alpha_VALUE_(mixed|source).tif' pattern and corresponding mixed/source files exist.")
+                "No matching samples found. Ensure filenames adhere to 'image_ID_alpha_VALUE_(mixed|source).tif' "
+                "pattern and corresponding mixed/source files exist for each (ID, Alpha) pair.")
 
-        # Sort samples by image_id for consistent order (important for splitting)
-        self.samples = sorted(self.samples, key=lambda x: x['image_id'])
+        # Sort samples for consistent order (important for splitting)
+        # Sorting by image_id and then scalar_label to ensure stable order
+        self.samples.sort(key=lambda x: (x['image_id'], x['scalar_label']))
         print(f"Found {len(self.samples)} matching samples.")
 
     def __len__(self):
@@ -144,34 +133,28 @@ class SplitCrosstalkDataset(Dataset):
 
 
 # --- Transform Functions (no changes needed) ---
-def get_train_transforms(target_size):
-    def train_transforms_fn(mixed_np, source_np, scalar_label):
-        mixed_tensor = torch.from_numpy(mixed_np).unsqueeze(0)
-        source_tensor = torch.from_numpy(source_np).unsqueeze(0)
-        label_tensor = torch.tensor(scalar_label, dtype=torch.float32).unsqueeze(0)
+def train_transforms_fn(mixed_np, source_np, scalar_label):
+    mixed_tensor = torch.from_numpy(mixed_np).unsqueeze(0)
+    source_tensor = torch.from_numpy(source_np).unsqueeze(0)
+    label_tensor = torch.tensor(scalar_label, dtype=torch.float32).unsqueeze(0)
 
-        if torch.rand(1) < 0.5:
-            mixed_tensor = TF.hflip(mixed_tensor)
-            source_tensor = TF.hflip(source_tensor)
+    if torch.rand(1) < 0.5:
+        mixed_tensor = TF.hflip(mixed_tensor)
+        source_tensor = TF.hflip(source_tensor)
 
-        if torch.rand(1) < 0.5:
-            mixed_tensor = TF.vflip(mixed_tensor)
-            source_tensor = TF.vflip(source_tensor)
+    if torch.rand(1) < 0.5:
+        mixed_tensor = TF.vflip(mixed_tensor)
+        source_tensor = TF.vflip(source_tensor)
 
-        return mixed_tensor, source_tensor, label_tensor
-
-    return train_transforms_fn
+    return mixed_tensor, source_tensor, label_tensor
 
 
-def get_val_test_transforms(target_size):
-    def val_test_transforms_fn(mixed_np, source_np, scalar_label):
-        mixed_tensor = torch.from_numpy(mixed_np).unsqueeze(0)
-        source_tensor = torch.from_numpy(source_np).unsqueeze(0)
-        label_tensor = torch.tensor(scalar_label, dtype=torch.float32).unsqueeze(0)
+def val_test_transforms_fn(mixed_np, source_np, scalar_label):
+    mixed_tensor = torch.from_numpy(mixed_np).unsqueeze(0)
+    source_tensor = torch.from_numpy(source_np).unsqueeze(0)
+    label_tensor = torch.tensor(scalar_label, dtype=torch.float32).unsqueeze(0)
 
-        return mixed_tensor, source_tensor, label_tensor
-
-    return val_test_transforms_fn
+    return mixed_tensor, source_tensor, label_tensor
 
 
 # --- End of Transform Functions ---
@@ -182,6 +165,7 @@ def train_model(model, train_dataloader, val_dataloader, criterion, optimizer, n
     model.to(device)
     log_file_path = "training_log_regression.csv"
     file_exists = os.path.isfile(log_file_path)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=5, factor=0.5)
 
     with open(log_file_path, mode='a', newline='') as log_file:
         log_writer = csv.writer(log_file)
@@ -191,20 +175,21 @@ def train_model(model, train_dataloader, val_dataloader, criterion, optimizer, n
         for epoch in range(num_epochs):
             model.train()
             running_loss = 0.0
-            for inputs, labels in tqdm(train_dataloader, desc=f"Epoch {epoch + 1}/{num_epochs} [Train]"):
-                inputs = inputs.to(device, non_blocking=True)
-                labels = labels.to(device, non_blocking=True)
+
+            for batch_x, batch_y in train_dataloader:
+                batch_x, batch_y = batch_x.to(device), batch_y.to(device)
+                batch_y = batch_y.squeeze(1)
 
                 optimizer.zero_grad()
-                outputs = model(inputs)
-
-                loss = criterion(outputs, labels)
+                output = model(batch_x).squeeze(1)
+                loss = criterion(output, batch_y)
                 loss.backward()
                 optimizer.step()
-                running_loss += loss.item() * inputs.size(0)
 
-            epoch_train_loss = running_loss / len(train_dataloader.dataset)
-            print(f"Epoch {epoch + 1} Train Loss: {epoch_train_loss:.6f}")
+                running_loss += loss.item()
+
+            avg_loss = running_loss / len(train_dataloader)
+            print(f"Epoch {epoch}, Avg Loss: {avg_loss:.6f}")
 
             model.eval()
             val_running_loss = 0.0
@@ -218,10 +203,23 @@ def train_model(model, train_dataloader, val_dataloader, criterion, optimizer, n
                     val_running_loss += loss.item() * inputs.size(0)
 
             epoch_val_loss = val_running_loss / len(val_dataloader.dataset)
+            scheduler.step(epoch_val_loss)
             print(f"Epoch {epoch + 1} Validation Loss: {epoch_val_loss:.6f}")
+            val_outputs_all = []
+            val_labels_all = []
 
-            log_writer.writerow([epoch + 1, epoch_train_loss, epoch_val_loss])
-            log_file.flush()
+            with torch.no_grad():
+                for inputs, labels in val_dataloader:
+                    inputs = inputs.to(device)
+                    labels = labels.to(device)
+                    outputs = model(inputs).squeeze(1)
+                    val_outputs_all.append(outputs.cpu())
+                    val_labels_all.append(labels.cpu())
+
+            val_preds = torch.cat(val_outputs_all)
+            val_truth = torch.cat(val_labels_all)
+            r2 = r2_score(val_truth.numpy(), val_preds.numpy())
+            print(f"Epoch {epoch + 1} R² Score: {r2:.4f}")
 
     print("Training complete. Losses logged to training_log_regression.csv.")
 
@@ -233,8 +231,8 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    mixed_channel_data_dir = "/nemo/stp/lm/working/barryd/IDR/crosstalk_training_data_2/bleed"
-    pure_source_data_dir = "/nemo/stp/lm/working/barryd/IDR/crosstalk_training_data_2/source"
+    mixed_channel_data_dir = "H:/GitRepos/Python/IDRTrainingData/crosstalk_training_data_2/bleed"
+    pure_source_data_dir = "H:/GitRepos/Python/IDRTrainingData/crosstalk_training_data_2/source"
 
     BATCH_SIZE = 16
     LEARNING_RATE = 0.001
@@ -253,7 +251,7 @@ if __name__ == "__main__":
         # No label_mapping_file needed, as labels are derived from filenames
         temp_dataset = CrosstalkDataset(
             mixed_channel_data_dir, pure_source_data_dir,
-            transform=get_val_test_transforms(TARGET_IMAGE_SIZE)
+            transform=val_test_transforms_fn
         )
         print(f"Total samples found in directories: {len(temp_dataset)}")
     except Exception as e:
@@ -278,19 +276,19 @@ if __name__ == "__main__":
 
     train_dataset_final = SplitCrosstalkDataset(
         mixed_channel_data_dir, pure_source_data_dir,
-        transform=get_train_transforms(TARGET_IMAGE_SIZE),
+        transform=train_transforms_fn,
         split_samples=train_samples
     )
 
     val_dataset_final = SplitCrosstalkDataset(
         mixed_channel_data_dir, pure_source_data_dir,
-        transform=get_val_test_transforms(TARGET_IMAGE_SIZE),
+        transform=val_test_transforms_fn,
         split_samples=val_samples
     )
 
     test_dataset_final = SplitCrosstalkDataset(
         mixed_channel_data_dir, pure_source_data_dir,
-        transform=get_val_test_transforms(TARGET_IMAGE_SIZE),
+        transform=val_test_transforms_fn,
         split_samples=test_samples
     )
 
@@ -320,7 +318,7 @@ if __name__ == "__main__":
 
     print("Dataloaders created for training, validation, and testing.")
 
-    criterion = nn.MSELoss()
+    criterion = torch.nn.SmoothL1Loss()
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
     print("\nStarting training with validation...")
