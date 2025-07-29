@@ -10,6 +10,8 @@ import torchvision.transforms.functional as TF
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
+from unet import UNet
+
 
 # Define a custom dataset class for handling crosstalk data
 class CrosstalkDataset(Dataset):
@@ -166,7 +168,7 @@ if __name__ == "__main__":
     label_data_dir = "/nemo/stp/lm/working/barryd/IDR/crosstalk_training_data/ground_truth"
 
     BATCH_SIZE = 256
-    LEARNING_RATE = 0.01
+    LEARNING_RATE = 0.001
     NUM_EPOCHS = 50
     U_NET_IN_CHANNELS = 2
     U_NET_OUT_CHANNELS = 1
@@ -177,15 +179,7 @@ if __name__ == "__main__":
     if not (abs(TRAIN_RATIO + VAL_RATIO) < 1.0):
         print("Warning: Sum of TRAIN_RATIO, VAL_RATIO, TEST_RATIO does not equal 1.0.")
 
-    print("\nLoading U-Net model from PyTorch Hub...")
-    try:
-        model = torch.hub.load('mateuszbuda/brain-segmentation-pytorch', 'unet',
-                               in_channels=U_NET_IN_CHANNELS, out_channels=U_NET_OUT_CHANNELS,
-                               init_features=32, pretrained=False)
-        print("U-Net model loaded successfully with 2 input channels.")
-    except Exception as e:
-        print(f"Error loading U-Net from PyTorch Hub: {e}")
-        exit()
+    model = UNet(in_channels=2, out_channels=1, init_features=32)
 
     print("\nCreating dataset instances for initial file listing...")
     try:
@@ -316,9 +310,7 @@ if __name__ == "__main__":
     print(f"Trained model weights saved to {model_save_path}")
 
     print("\n--- Evaluating Model on Test Set ---")
-    loaded_model = torch.hub.load('mateuszbuda/brain-segmentation-pytorch', 'unet',
-                                  in_channels=U_NET_IN_CHANNELS, out_channels=U_NET_OUT_CHANNELS,
-                                  init_features=32, pretrained=False)
+    loaded_model = UNet(in_channels=2, out_channels=1, init_features=32)
     loaded_model.load_state_dict(torch.load(model_save_path, map_location=device))
     loaded_model.eval()
     loaded_model.to(device)
