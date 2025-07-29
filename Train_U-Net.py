@@ -1,5 +1,6 @@
 import csv
 import os
+import re  # Import regex for pattern matching
 
 import imageio.v3 as iio
 import numpy as np
@@ -10,82 +11,132 @@ import torchvision.transforms.functional as TF
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
-from unet import UNet
+from kimmel_net import RegressionModel
 
 
-# Define a custom dataset class for handling crosstalk data
+# --- Custom Dataset Classes (MODIFIED for scalar labels from filename) ---
 class CrosstalkDataset(Dataset):
-    def __init__(self, mixed_channel_dir, pure_source_dir, label_dir, transform=None):
+    def __init__(self, mixed_channel_dir, pure_source_dir, transform=None):  # Removed label_mapping_file
         self.mixed_channel_dir = mixed_channel_dir
         self.pure_source_dir = pure_source_dir
-        self.label_dir = label_dir
         self.transform = transform
-        self.mixed_channel_filenames = sorted([f for f in os.listdir(mixed_channel_dir) if f.endswith('.tif')])
-        self.pure_source_filenames = sorted([f for f in os.listdir(pure_source_dir) if f.endswith('.tif')])
-        self.label_filenames = sorted([f for f in os.listdir(label_dir) if f.endswith('.tif')])
 
-        if not (len(self.mixed_channel_filenames) == len(self.pure_source_filenames) == len(self.label_filenames)):
-            raise ValueError("Number of mixed channel, pure source, and label images must be the same.")
+        # List all image files
+        all_mixed_filenames = sorted([f for f in os.listdir(mixed_channel_dir) if f.endswith('.tif')])
+        all_pure_source_filenames = sorted([f for f in os.listdir(pure_source_dir) if f.endswith('.tif')])
 
-        for i in range(len(self.mixed_channel_filenames)):
-            mixed_base = '_'.join(self.mixed_channel_filenames[i].split('_')[:-1])
-            source_base = '_'.join(self.pure_source_filenames[i].split('_')[:-1])
-            label_base = '_'.join(self.label_filenames[i].split('_')[:-2])
-            if not (mixed_base == source_base == label_base):
-                raise ValueError(
-                    f"Filename mismatch at index {i}: "
-                    f"Mixed: {self.mixed_channel_filenames[i]}, "
-                    f"Source: {self.pure_source_filenames[i]}, "
-                    f"Label: {self.label_filenames[i]}"
-                )
-        print(f"Found {len(self.mixed_channel_filenames)} matching samples.")
+        self.samples = []
+        # Regex to extract the alpha value, e.g., '0.49' from 'image_3126239_alpha_0.49_mixed.tif'
+        # This pattern looks for "_alpha_" followed by one or more digits, an optional decimal point,
+        # and more digits, then "_mixed.tif". It captures the number.
+        self.alpha_pattern = re.compile(r'_alpha_(\d+\.?\d*)_mixed\.tif')
+
+        for mixed_file in all_mixed_filenames:
+            match = self.alpha_pattern.search(mixed_file)
+            if not match:
+                # print(f"Warning: Could not extract alpha value from {mixed_file}. Skipping.")
+                continue  # Skip files that don't match the pattern
+
+            scalar_label = float(match.group(1))  # Extract and convert to float
+
+            # Construct the expected source filename based on the mixed filename
+            # This assumes image_ID_alpha_VAL_mixed.tif corresponds to image_ID_source.tif
+            # You might need to adjust this depending on your source file naming convention.
+            # Assuming the 'image_ID' part is consistent:
+            base_name_parts = mixed_file.split('_')
+            # Assuming format: image_ID_alpha_VAL_mixed.tif
+            # Extract 'image_ID' part: image_3126239
+            image_id_part = '_'.join(
+                base_name_parts[:-3])  # Gets 'image_3126239' from 'image_3126239_alpha_0.49_mixed.tif'
+
+            source_file = f"{image_id_part}_source.tif"  # e.g., 'image_3126239_source.tif'
+
+            # Check if corresponding source image exists
+            if source_file in all_pure_source_filenames:
+                self.samples.append({
+                    'mixed_channel_file': mixed_file,
+                    'pure_source_file': source_file,
+                    'scalar_label': scalar_label
+                })
+            else:
+                print(f"Warning: Missing source file {source_file} for mixed file {mixed_file}. Skipping.")
+
+        if not self.samples:
+            raise ValueError("No matching samples found after checking filenames and extracting scalar labels. "
+                             "Ensure filenames match the expected pattern and corresponding source files exist.")
+
+        print(f"Found {len(self.samples)} matching samples.")
 
     def __len__(self):
-        return len(self.mixed_channel_filenames)
+        return len(self.samples)
 
     def __getitem__(self, idx):
-        mixed_channel_path = os.path.join(self.mixed_channel_dir, self.mixed_channel_filenames[idx])
-        pure_source_path = os.path.join(self.pure_source_dir, self.pure_source_filenames[idx])
-        label_path = os.path.join(self.label_dir, self.label_filenames[idx])
+        sample_info = self.samples[idx]
+
+        mixed_channel_path = os.path.join(self.mixed_channel_dir, sample_info['mixed_channel_file'])
+        pure_source_path = os.path.join(self.pure_source_dir, sample_info['pure_source_file'])
+        scalar_label = sample_info['scalar_label']
 
         mixed_image_np = iio.imread(mixed_channel_path).astype(np.float32)
         source_image_np = iio.imread(pure_source_path).astype(np.float32)
-        label_image_np = iio.imread(label_path).astype(np.float32)
 
         if self.transform:
-            mixed_tensor, source_tensor, label_tensor = self.transform(mixed_image_np, source_image_np, label_image_np)
+            mixed_tensor, source_tensor, label_tensor = self.transform(mixed_image_np, source_image_np, scalar_label)
         else:
-            raise ValueError("No transform pipeline provided for dataset.")
+            mixed_tensor = torch.from_numpy(mixed_image_np).unsqueeze(0)
+            source_tensor = torch.from_numpy(source_image_np).unsqueeze(0)
+            label_tensor = torch.tensor(scalar_label, dtype=torch.float32).unsqueeze(0)  # Make it (1,)
 
         input_tensor = torch.cat([mixed_tensor, source_tensor], dim=0)
         return input_tensor, label_tensor
 
 
+class SplitCrosstalkDataset(Dataset):
+    def __init__(self, mixed_channel_dir, pure_source_dir, transform, split_samples):
+        self.mixed_channel_dir = mixed_channel_dir
+        self.pure_source_dir = pure_source_dir
+        self.transform = transform
+        self.split_samples = split_samples  # This is already the filtered list of sample dicts
+
+        if not self.split_samples:
+            raise ValueError("SplitCrosstalkDataset received no samples.")
+        print(f"SplitCrosstalkDataset created with {len(self.split_samples)} samples.")
+
+    def __len__(self):
+        return len(self.split_samples)
+
+    def __getitem__(self, idx_in_split):
+        sample_info = self.split_samples[idx_in_split]
+
+        mixed_channel_path = os.path.join(self.mixed_channel_dir, sample_info['mixed_channel_file'])
+        pure_source_path = os.path.join(self.pure_source_dir, sample_info['pure_source_file'])
+        scalar_label = sample_info['scalar_label']  # This is directly available from sample_info
+
+        mixed_image_np = iio.imread(mixed_channel_path).astype(np.float32)
+        source_image_np = iio.imread(pure_source_path).astype(np.float32)
+
+        mixed_tensor, source_tensor, label_tensor = self.transform(mixed_image_np, source_image_np, scalar_label)
+        input_tensor = torch.cat([mixed_tensor, source_tensor], dim=0)
+        return input_tensor, label_tensor
+
+
+# --- End of Custom Dataset Classes ---
+
+
+# --- Transform Functions (no changes needed, as they already handle scalar_label) ---
 def get_train_transforms(target_size):
-    def train_transforms_fn(mixed_np, source_np, label_np):
+    def train_transforms_fn(mixed_np, source_np, scalar_label):
         mixed_tensor = torch.from_numpy(mixed_np).unsqueeze(0)
         source_tensor = torch.from_numpy(source_np).unsqueeze(0)
-        label_tensor = torch.from_numpy(label_np).unsqueeze(0)
+        label_tensor = torch.tensor(scalar_label, dtype=torch.float32).unsqueeze(0)  # Make it (1,)
 
         if torch.rand(1) < 0.5:
             mixed_tensor = TF.hflip(mixed_tensor)
             source_tensor = TF.hflip(source_tensor)
-            label_tensor = TF.hflip(label_tensor)
 
         if torch.rand(1) < 0.5:
             mixed_tensor = TF.vflip(mixed_tensor)
             source_tensor = TF.vflip(source_tensor)
-            label_tensor = TF.vflip(label_tensor)
-
-        # angle = T.RandomRotation.get_params([-10, 10])
-        # mixed_tensor = TF.rotate(mixed_tensor, angle)
-        # source_tensor = TF.rotate(source_tensor, angle)
-        # label_tensor = TF.rotate(label_tensor, angle)
-
-        # resize_transform = T.Resize(target_size)
-        # mixed_tensor = resize_transform(mixed_tensor)
-        # source_tensor = resize_transform(source_tensor)
-        # label_tensor = resize_transform(label_tensor)
 
         return mixed_tensor, source_tensor, label_tensor
 
@@ -93,24 +144,23 @@ def get_train_transforms(target_size):
 
 
 def get_val_test_transforms(target_size):
-    def val_test_transforms_fn(mixed_np, source_np, label_np):
+    def val_test_transforms_fn(mixed_np, source_np, scalar_label):
         mixed_tensor = torch.from_numpy(mixed_np).unsqueeze(0)
         source_tensor = torch.from_numpy(source_np).unsqueeze(0)
-        label_tensor = torch.from_numpy(label_np).unsqueeze(0)
-
-        # resize_transform = T.Resize(target_size)
-        # mixed_tensor = resize_transform(mixed_tensor)
-        # source_tensor = resize_transform(source_tensor)
-        # label_tensor = resize_transform(label_tensor)
+        label_tensor = torch.tensor(scalar_label, dtype=torch.float32).unsqueeze(0)  # Make it (1,)
 
         return mixed_tensor, source_tensor, label_tensor
 
     return val_test_transforms_fn
 
 
+# --- End of Transform Functions ---
+
+
+# --- Training Function (no changes needed) ---
 def train_model(model, train_dataloader, val_dataloader, criterion, optimizer, num_epochs, device):
     model.to(device)
-    log_file_path = "training_log.csv"
+    log_file_path = "training_log_regression.csv"
     file_exists = os.path.isfile(log_file_path)
 
     with open(log_file_path, mode='a', newline='') as log_file:
@@ -124,15 +174,14 @@ def train_model(model, train_dataloader, val_dataloader, criterion, optimizer, n
             for inputs, labels in tqdm(train_dataloader, desc=f"Epoch {epoch + 1}/{num_epochs} [Train]"):
                 inputs = inputs.to(device, non_blocking=True)
                 labels = labels.to(device, non_blocking=True)
+
                 optimizer.zero_grad()
                 outputs = model(inputs)
-                if outputs.shape != labels.shape:
-                    outputs = nn.functional.interpolate(outputs, size=labels.shape[2:], mode='bilinear',
-                                                        align_corners=False)
+
                 loss = criterion(outputs, labels)
                 loss.backward()
                 optimizer.step()
-                running_loss += loss.item() * inputs.size(0)
+                running_loss += loss.item() * inputs.size(0)  # Assuming reduction='mean' in criterion
 
             epoch_train_loss = running_loss / len(train_dataloader.dataset)
             print(f"Epoch {epoch + 1} Train Loss: {epoch_train_loss:.6f}")
@@ -144,9 +193,7 @@ def train_model(model, train_dataloader, val_dataloader, criterion, optimizer, n
                     inputs = inputs.to(device, non_blocking=True)
                     labels = labels.to(device, non_blocking=True)
                     outputs = model(inputs)
-                    if outputs.shape != labels.shape:
-                        outputs = nn.functional.interpolate(outputs, size=labels.shape[2:], mode='bilinear',
-                                                            align_corners=False)
+
                     loss = criterion(outputs, labels)
                     val_running_loss += loss.item() * inputs.size(0)
 
@@ -156,7 +203,10 @@ def train_model(model, train_dataloader, val_dataloader, criterion, optimizer, n
             log_writer.writerow([epoch + 1, epoch_train_loss, epoch_val_loss])
             log_file.flush()
 
-    print("Training complete. Losses logged to training_log.csv.")
+    print("Training complete. Losses logged to training_log_regression.csv.")
+
+
+# --- End of Training Function ---
 
 
 if __name__ == "__main__":
@@ -165,26 +215,24 @@ if __name__ == "__main__":
 
     mixed_channel_data_dir = "/nemo/stp/lm/working/barryd/IDR/crosstalk_training_data/bleed"
     pure_source_data_dir = "/nemo/stp/lm/working/barryd/IDR/crosstalk_training_data/source"
-    label_data_dir = "/nemo/stp/lm/working/barryd/IDR/crosstalk_training_data/ground_truth"
 
     BATCH_SIZE = 256
     LEARNING_RATE = 0.001
     NUM_EPOCHS = 50
-    U_NET_IN_CHANNELS = 2
-    U_NET_OUT_CHANNELS = 1
-    TARGET_IMAGE_SIZE = (256, 256)
+    TARGET_IMAGE_SIZE = (256, 256)  # This is crucial for your RegressionModel's _get_conv_output
     TRAIN_RATIO = 0.7
     VAL_RATIO = 0.15
 
     if not (abs(TRAIN_RATIO + VAL_RATIO) < 1.0):
         print("Warning: Sum of TRAIN_RATIO, VAL_RATIO, TEST_RATIO does not equal 1.0.")
 
-    model = UNet(in_channels=2, out_channels=1, init_features=32)
+    model = RegressionModel()
 
     print("\nCreating dataset instances for initial file listing...")
     try:
+        # Pass only image directories, no label_mapping_file needed
         temp_dataset = CrosstalkDataset(
-            mixed_channel_data_dir, pure_source_data_dir, label_data_dir,
+            mixed_channel_data_dir, pure_source_data_dir,
             transform=get_val_test_transforms(TARGET_IMAGE_SIZE)
         )
         print(f"Total samples found in directories: {len(temp_dataset)}")
@@ -193,83 +241,37 @@ if __name__ == "__main__":
         exit()
 
     print("\nSplitting data using filename lists for correct augmentation application...")
-    all_mixed_filenames = temp_dataset.mixed_channel_filenames
-    all_source_filenames = temp_dataset.pure_source_filenames
-    all_label_filenames = temp_dataset.label_filenames
-    total_samples = len(all_mixed_filenames)
+    all_samples = temp_dataset.samples  # This now holds the list of dictionaries with all sample info
+    total_samples = len(all_samples)
     torch.manual_seed(42)
     shuffled_indices = torch.randperm(total_samples).tolist()
+
     train_size = int(TRAIN_RATIO * total_samples)
     val_size = int(VAL_RATIO * total_samples)
     test_size = total_samples - train_size - val_size
-    train_indices = shuffled_indices[0:train_size]
-    val_indices = shuffled_indices[train_size: train_size + val_size]
-    test_indices = shuffled_indices[train_size + val_size:]
-    print(f"Split sizes: Train = {len(train_indices)}, Validation = {len(val_indices)}, Test = {len(test_indices)}")
 
+    train_samples = [all_samples[i] for i in shuffled_indices[0:train_size]]
+    val_samples = [all_samples[i] for i in shuffled_indices[train_size: train_size + val_size]]
+    test_samples = [all_samples[i] for i in shuffled_indices[train_size + val_size:]]
 
-    class SplitCrosstalkDataset(Dataset):
-        def __init__(self, mixed_channel_dir, pure_source_dir, label_dir, transform, indices,
-                     all_mixed_filenames, all_source_filenames, all_label_filenames):
-            self.mixed_channel_dir = mixed_channel_dir
-            self.pure_source_dir = pure_source_dir
-            self.label_dir = label_dir
-            self.transform = transform
-            self.indices = indices
-            self.mixed_channel_filenames_split = [all_mixed_filenames[i] for i in indices]
-            self.pure_source_filenames_split = [all_source_filenames[i] for i in indices]
-            self.label_filenames_split = [all_label_filenames[i] for i in indices]
-
-            for i in range(len(self.mixed_channel_filenames_split)):
-                mixed_base = '_'.join(self.mixed_channel_filenames_split[i].split('_')[:-1])
-                source_base = '_'.join(self.pure_source_filenames_split[i].split('_')[:-1])
-                label_base = '_'.join(self.label_filenames_split[i].split('_')[:-2])
-                if not (mixed_base == source_base == label_base):
-                    raise ValueError(f"Internal split filename mismatch: {mixed_base}, {source_base}, {label_base}")
-            print(f"SplitCrosstalkDataset created with {len(self.indices)} samples.")
-
-        def __len__(self):
-            return len(self.indices)
-
-        def __getitem__(self, idx_in_split):
-            mixed_channel_path = os.path.join(self.mixed_channel_dir, self.mixed_channel_filenames_split[idx_in_split])
-            pure_source_path = os.path.join(self.pure_source_dir, self.pure_source_filenames_split[idx_in_split])
-            label_path = os.path.join(self.label_dir, self.label_filenames_split[idx_in_split])
-
-            mixed_image_np = iio.imread(mixed_channel_path).astype(np.float32)
-            source_image_np = iio.imread(pure_source_path).astype(np.float32)
-            label_image_np = iio.imread(label_path).astype(np.float32)
-
-            mixed_tensor, source_tensor, label_tensor = self.transform(mixed_image_np, source_image_np, label_image_np)
-            input_tensor = torch.cat([mixed_tensor, source_tensor], dim=0)
-            return input_tensor, label_tensor
-
+    print(f"Split sizes: Train = {len(train_samples)}, Validation = {len(val_samples)}, Test = {len(test_samples)}")
 
     train_dataset_final = SplitCrosstalkDataset(
-        mixed_channel_data_dir, pure_source_data_dir, label_data_dir,
+        mixed_channel_data_dir, pure_source_data_dir,
         transform=get_train_transforms(TARGET_IMAGE_SIZE),
-        indices=train_indices,
-        all_mixed_filenames=all_mixed_filenames,
-        all_source_filenames=all_source_filenames,
-        all_label_filenames=all_label_filenames
+        split_samples=train_samples
     )
 
     val_dataset_final = SplitCrosstalkDataset(
-        mixed_channel_data_dir, pure_source_data_dir, label_data_dir,
+        mixed_channel_data_dir, pure_source_data_dir,
         transform=get_val_test_transforms(TARGET_IMAGE_SIZE),
-        indices=val_indices,
-        all_mixed_filenames=all_mixed_filenames,
-        all_source_filenames=all_source_filenames,
-        all_label_filenames=all_label_filenames
+        split_samples=val_samples
     )
 
     test_dataset_final = SplitCrosstalkDataset(
-        mixed_channel_data_dir, pure_source_data_dir, label_data_dir,
+        mixed_channel_data_dir, pure_source_data_dir,
         transform=get_val_test_transforms(TARGET_IMAGE_SIZE),
-        indices=test_indices,
-        all_mixed_filenames=all_mixed_filenames,
-        all_source_filenames=all_source_filenames,
-        all_label_filenames=all_label_filenames
+        split_samples=test_samples
     )
 
     train_dataloader = DataLoader(
@@ -305,12 +307,12 @@ if __name__ == "__main__":
     train_model(model, train_dataloader, val_dataloader, criterion, optimizer, NUM_EPOCHS, device)
     print("Training finished!")
 
-    model_save_path = "crosstalk_detection_unet_2input_trained.pth"
+    model_save_path = "crosstalk_regression_model_trained.pth"
     torch.save(model.state_dict(), model_save_path)
     print(f"Trained model weights saved to {model_save_path}")
 
     print("\n--- Evaluating Model on Test Set ---")
-    loaded_model = UNet(in_channels=2, out_channels=1, init_features=32)
+    loaded_model = RegressionModel()
     loaded_model.load_state_dict(torch.load(model_save_path, map_location=device))
     loaded_model.eval()
     loaded_model.to(device)
@@ -321,9 +323,6 @@ if __name__ == "__main__":
             inputs = inputs.to(device)
             labels = labels.to(device)
             outputs = loaded_model(inputs)
-            if outputs.shape != labels.shape:
-                outputs = nn.functional.interpolate(outputs, size=labels.shape[2:], mode='bilinear',
-                                                    align_corners=False)
             loss = criterion(outputs, labels)
             test_running_loss += loss.item() * inputs.size(0)
 

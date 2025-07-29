@@ -4,11 +4,11 @@ import torch
 from PIL import Image
 from torchvision import transforms
 
+from unet import UNet
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model_save_path = "Z:/working/barryd/hpc/python/Torch-Unet/crosstalk_detection_unet_2input_trained.pth"
-model = torch.hub.load('mateuszbuda/brain-segmentation-pytorch', 'unet',
-                       in_channels=2, out_channels=1,
-                       init_features=32, pretrained=False)
+model = UNet(in_channels=2, out_channels=1, init_features=32)
 model.load_state_dict(torch.load(model_save_path, map_location=device))
 model.eval()
 model.to(device)
