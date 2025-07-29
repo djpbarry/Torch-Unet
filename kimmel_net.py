@@ -21,35 +21,29 @@ class RegressionModel(nn.Module):
             nn.MaxPool2d(kernel_size=2, stride=2),
         )
 
-        # Calculate the size of the flattened features
+        # Global average pooling to reduce spatial dimensions to (1,1)
+        self.global_pool = nn.AdaptiveAvgPool2d((1, 1))
+
+        # Dynamically calculate flattened feature size after conv and pooling
         conv_output_size = self._get_conv_output((256, 256))
 
         # Define the fully connected layers
         self.fc_layers = nn.Sequential(
-            nn.Flatten(),
             nn.Dropout(0.5),
             nn.Linear(conv_output_size, 1),
             nn.Sigmoid()
         )
 
-        self.global_pool = nn.AdaptiveAvgPool2d((1, 1))
-
     def _get_conv_output(self, shape):
-        # Helper method to calculate the size of the flattened features
+        # Helper to determine output feature size after conv and pooling
         with torch.no_grad():
-            input = torch.zeros(1, 2, *shape)  # Use 2 channels for input
-            output = self.conv_layers(input)
-            return int(torch.prod(torch.tensor(output.size()[1:])))
+            input = torch.zeros(1, 2, *shape)  # batch=1, channels=2, HxW
+            output = self.global_pool(self.conv_layers(input))
+            return output.view(1, -1).size(1)
 
     def forward(self, x):
         x = self.conv_layers(x)
         x = self.global_pool(x)
-        x = torch.flatten(x, 1)
+        x = torch.flatten(x, 1)  # flatten all but batch dimension
         x = self.fc_layers(x)
         return x
-
-# Example usage
-# model = RegressionModel()
-# input_tensor = torch.randn(1, 2, 256, 256)  # Example input tensor with 2 channels and size 256x256
-# output = model(input_tensor)
-# print(output)
