@@ -11,60 +11,78 @@ import torchvision.transforms.functional as TF
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
-from kimmel_net import RegressionModel
 
-
-# --- Custom Dataset Classes (MODIFIED for scalar labels from filename) ---
+# --- Custom Dataset Classes (MODIFIED for scalar labels from filename and improved matching) ---
 class CrosstalkDataset(Dataset):
-    def __init__(self, mixed_channel_dir, pure_source_dir, transform=None):  # Removed label_mapping_file
+    def __init__(self, mixed_channel_dir, pure_source_dir, transform=None):
         self.mixed_channel_dir = mixed_channel_dir
         self.pure_source_dir = pure_source_dir
         self.transform = transform
 
-        # List all image files
-        all_mixed_filenames = sorted([f for f in os.listdir(mixed_channel_dir) if f.endswith('.tif')])
-        all_pure_source_filenames = sorted([f for f in os.listdir(pure_source_dir) if f.endswith('.tif')])
+        # Regex to extract the unique ID (e.g., '3126239') and the alpha value (e.g., '0.49')
+        # This pattern works for both '_mixed.tif' and '_source.tif' files
+        self.file_pattern = re.compile(r'image_(\d+)_alpha_(\d+\.?\d*)_(mixed|source)\.tif')
+
+        # Store mappings: {image_id: {alpha: value, mixed_file: path, source_file: path}}
+        all_sample_info = {}
+
+        # Process mixed channel files
+        for filename in os.listdir(mixed_channel_dir):
+            if filename.endswith('.tif'):
+                match = self.file_pattern.search(filename)
+                if match:
+                    image_id = match.group(1)
+                    alpha_value = float(match.group(2))
+                    file_type = match.group(3)  # 'mixed' or 'source'
+
+                    if file_type == 'mixed':
+                        if image_id not in all_sample_info:
+                            all_sample_info[image_id] = {'alpha': alpha_value, 'mixed_file': filename}
+                        else:
+                            # Basic consistency check: alpha should be same for the same ID
+                            if all_sample_info[image_id]['alpha'] != alpha_value:
+                                print(
+                                    f"Warning: Alpha mismatch for ID {image_id} (mixed). Existing: {all_sample_info[image_id]['alpha']}, New: {alpha_value}")
+                            all_sample_info[image_id]['mixed_file'] = filename  # Update in case of duplicates
+
+        # Process pure source files
+        for filename in os.listdir(pure_source_dir):
+            if filename.endswith('.tif'):
+                match = self.file_pattern.search(filename)
+                if match:
+                    image_id = match.group(1)
+                    alpha_value = float(match.group(2))
+                    file_type = match.group(3)  # 'mixed' or 'source'
+
+                    if file_type == 'source':
+                        if image_id not in all_sample_info:
+                            all_sample_info[image_id] = {'alpha': alpha_value, 'source_file': filename}
+                        else:
+                            # Basic consistency check: alpha should be same for the same ID
+                            if all_sample_info[image_id]['alpha'] != alpha_value:
+                                print(
+                                    f"Warning: Alpha mismatch for ID {image_id} (source). Existing: {all_sample_info[image_id]['alpha']}, New: {alpha_value}")
+                            all_sample_info[image_id]['source_file'] = filename  # Update
 
         self.samples = []
-        # Regex to extract the alpha value, e.g., '0.49' from 'image_3126239_alpha_0.49_mixed.tif'
-        # This pattern looks for "_alpha_" followed by one or more digits, an optional decimal point,
-        # and more digits, then "_mixed.tif". It captures the number.
-        self.alpha_pattern = re.compile(r'_alpha_(\d+\.?\d*)_mixed\.tif')
-
-        for mixed_file in all_mixed_filenames:
-            match = self.alpha_pattern.search(mixed_file)
-            if not match:
-                # print(f"Warning: Could not extract alpha value from {mixed_file}. Skipping.")
-                continue  # Skip files that don't match the pattern
-
-            scalar_label = float(match.group(1))  # Extract and convert to float
-
-            # Construct the expected source filename based on the mixed filename
-            # This assumes image_ID_alpha_VAL_mixed.tif corresponds to image_ID_source.tif
-            # You might need to adjust this depending on your source file naming convention.
-            # Assuming the 'image_ID' part is consistent:
-            base_name_parts = mixed_file.split('_')
-            # Assuming format: image_ID_alpha_VAL_mixed.tif
-            # Extract 'image_ID' part: image_3126239
-            image_id_part = '_'.join(
-                base_name_parts[:-3])  # Gets 'image_3126239' from 'image_3126239_alpha_0.49_mixed.tif'
-
-            source_file = f"{image_id_part}_source.tif"  # e.g., 'image_3126239_source.tif'
-
-            # Check if corresponding source image exists
-            if source_file in all_pure_source_filenames:
+        for image_id, info in all_sample_info.items():
+            if 'mixed_file' in info and 'source_file' in info:
                 self.samples.append({
-                    'mixed_channel_file': mixed_file,
-                    'pure_source_file': source_file,
-                    'scalar_label': scalar_label
+                    'image_id': image_id,
+                    'mixed_channel_file': info['mixed_file'],
+                    'pure_source_file': info['source_file'],
+                    'scalar_label': info['alpha']
                 })
             else:
-                print(f"Warning: Missing source file {source_file} for mixed file {mixed_file}. Skipping.")
+                # print(f"Warning: Skipping ID {image_id} due to missing mixed or source file.")
+                pass  # Already printing warnings if file doesn't match regex.
 
         if not self.samples:
-            raise ValueError("No matching samples found after checking filenames and extracting scalar labels. "
-                             "Ensure filenames match the expected pattern and corresponding source files exist.")
+            raise ValueError(
+                "No matching samples found. Ensure filenames adhere to 'image_ID_alpha_VALUE_(mixed|source).tif' pattern and corresponding mixed/source files exist.")
 
+        # Sort samples by image_id for consistent order (important for splitting)
+        self.samples = sorted(self.samples, key=lambda x: x['image_id'])
         print(f"Found {len(self.samples)} matching samples.")
 
     def __len__(self):
@@ -85,7 +103,7 @@ class CrosstalkDataset(Dataset):
         else:
             mixed_tensor = torch.from_numpy(mixed_image_np).unsqueeze(0)
             source_tensor = torch.from_numpy(source_image_np).unsqueeze(0)
-            label_tensor = torch.tensor(scalar_label, dtype=torch.float32).unsqueeze(0)  # Make it (1,)
+            label_tensor = torch.tensor(scalar_label, dtype=torch.float32).unsqueeze(0)
 
         input_tensor = torch.cat([mixed_tensor, source_tensor], dim=0)
         return input_tensor, label_tensor
@@ -110,7 +128,7 @@ class SplitCrosstalkDataset(Dataset):
 
         mixed_channel_path = os.path.join(self.mixed_channel_dir, sample_info['mixed_channel_file'])
         pure_source_path = os.path.join(self.pure_source_dir, sample_info['pure_source_file'])
-        scalar_label = sample_info['scalar_label']  # This is directly available from sample_info
+        scalar_label = sample_info['scalar_label']
 
         mixed_image_np = iio.imread(mixed_channel_path).astype(np.float32)
         source_image_np = iio.imread(pure_source_path).astype(np.float32)
@@ -123,12 +141,12 @@ class SplitCrosstalkDataset(Dataset):
 # --- End of Custom Dataset Classes ---
 
 
-# --- Transform Functions (no changes needed, as they already handle scalar_label) ---
+# --- Transform Functions (no changes needed) ---
 def get_train_transforms(target_size):
     def train_transforms_fn(mixed_np, source_np, scalar_label):
         mixed_tensor = torch.from_numpy(mixed_np).unsqueeze(0)
         source_tensor = torch.from_numpy(source_np).unsqueeze(0)
-        label_tensor = torch.tensor(scalar_label, dtype=torch.float32).unsqueeze(0)  # Make it (1,)
+        label_tensor = torch.tensor(scalar_label, dtype=torch.float32).unsqueeze(0)
 
         if torch.rand(1) < 0.5:
             mixed_tensor = TF.hflip(mixed_tensor)
@@ -147,7 +165,7 @@ def get_val_test_transforms(target_size):
     def val_test_transforms_fn(mixed_np, source_np, scalar_label):
         mixed_tensor = torch.from_numpy(mixed_np).unsqueeze(0)
         source_tensor = torch.from_numpy(source_np).unsqueeze(0)
-        label_tensor = torch.tensor(scalar_label, dtype=torch.float32).unsqueeze(0)  # Make it (1,)
+        label_tensor = torch.tensor(scalar_label, dtype=torch.float32).unsqueeze(0)
 
         return mixed_tensor, source_tensor, label_tensor
 
@@ -181,7 +199,7 @@ def train_model(model, train_dataloader, val_dataloader, criterion, optimizer, n
                 loss = criterion(outputs, labels)
                 loss.backward()
                 optimizer.step()
-                running_loss += loss.item() * inputs.size(0)  # Assuming reduction='mean' in criterion
+                running_loss += loss.item() * inputs.size(0)
 
             epoch_train_loss = running_loss / len(train_dataloader.dataset)
             print(f"Epoch {epoch + 1} Train Loss: {epoch_train_loss:.6f}")
@@ -219,7 +237,7 @@ if __name__ == "__main__":
     BATCH_SIZE = 256
     LEARNING_RATE = 0.001
     NUM_EPOCHS = 50
-    TARGET_IMAGE_SIZE = (256, 256)  # This is crucial for your RegressionModel's _get_conv_output
+    TARGET_IMAGE_SIZE = (256, 256)
     TRAIN_RATIO = 0.7
     VAL_RATIO = 0.15
 
@@ -230,7 +248,7 @@ if __name__ == "__main__":
 
     print("\nCreating dataset instances for initial file listing...")
     try:
-        # Pass only image directories, no label_mapping_file needed
+        # No label_mapping_file needed, as labels are derived from filenames
         temp_dataset = CrosstalkDataset(
             mixed_channel_data_dir, pure_source_data_dir,
             transform=get_val_test_transforms(TARGET_IMAGE_SIZE)
