@@ -11,6 +11,8 @@ import torchvision.transforms.functional as TF
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
+from kimmel_net import RegressionModel
+
 
 # --- Custom Dataset Classes (MODIFIED for scalar labels from filename and improved matching) ---
 class CrosstalkDataset(Dataset):
@@ -336,14 +338,42 @@ if __name__ == "__main__":
     loaded_model.to(device)
 
     test_running_loss = 0.0
+    # List to store actual vs. predicted values
+    predictions_data = []
+
     with torch.no_grad():
-        for inputs, labels in tqdm(test_dataloader, desc="Test Set Evaluation"):
+        for i, (inputs, labels) in enumerate(tqdm(test_dataloader, desc="Test Set Evaluation")):
             inputs = inputs.to(device)
-            labels = labels.to(device)
-            outputs = loaded_model(inputs)
+            labels = labels.to(device)  # Shape: (batch_size, 1)
+
+            outputs = loaded_model(inputs)  # Shape: (batch_size, 1)
+
             loss = criterion(outputs, labels)
             test_running_loss += loss.item() * inputs.size(0)
+
+            # Store actual and predicted values
+            # Move tensors to CPU and convert to numpy arrays, then flatten to 1D list
+            actual_labels = labels.cpu().numpy().flatten()
+            predicted_labels = outputs.cpu().numpy().flatten()
+
+            # For each sample in the current batch, append its actual and predicted value
+            for j in range(len(actual_labels)):
+                predictions_data.append({
+                    'Actual_Label': actual_labels[j],
+                    'Predicted_Label': predicted_labels[j]
+                })
 
     final_test_loss = test_running_loss / len(test_dataloader.dataset)
     print(f"\nFinal Test Loss: {final_test_loss:.6f}")
     print("Test set evaluation complete.")
+
+    # --- Save predictions to CSV ---
+    output_csv_path = "test_predictions.csv"
+    with open(output_csv_path, mode='w', newline='') as csv_file:
+        fieldnames = ['Actual_Label', 'Predicted_Label']
+        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+
+        writer.writeheader()
+        writer.writerows(predictions_data)
+
+    print(f"Test predictions saved to {output_csv_path}")
