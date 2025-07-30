@@ -1,5 +1,6 @@
 import csv
 import os
+import random
 import re  # Import regex for pattern matching
 
 import imageio.v3 as iio
@@ -144,6 +145,39 @@ def train_transforms_fn(mixed_np, source_np, scalar_label):
         mixed_tensor = TF.vflip(mixed_tensor)
         source_tensor = TF.vflip(source_tensor)
 
+    img_h, img_w = mixed_tensor.shape[-2:]
+
+    # Example for rotation (needs to be applied to both identically)
+    angle = torch.RandomRotation.get_params([-15, 15])  # Get random angle
+    mixed_tensor = TF.rotate(mixed_tensor, angle)
+    source_tensor = TF.rotate(source_tensor, angle)
+
+    # Random rotation degrees
+    degrees = random.uniform(-15, 15)  # Example: rotate between -15 and +15 degrees
+
+    # Random translation (e.g., up to 10% of width/height)
+    # translate = (horizontal_shift_percentage, vertical_shift_percentage)
+    translate_x = random.uniform(-0.1, 0.1) * img_w
+    translate_y = random.uniform(-0.1, 0.1) * img_h
+    translate = (translate_x, translate_y)
+
+    # Apply the generated affine transform to both tensors
+    # TF.affine(img, angle, translate, scale, shear, interpolation, fill)
+    # For single-channel images, interpolation=TF.InterpolationMode.BILINEAR is good.
+    # fill=0.0 (or pixel mean) for areas outside the image after transform.
+    mixed_tensor = TF.affine(
+        mixed_tensor,
+        translate=translate,
+        interpolation=TF.InterpolationMode.BILINEAR,
+        fill=0.0  # Fill value for pixels outside original image
+    )
+    source_tensor = TF.affine(
+        source_tensor,
+        translate=translate,
+        interpolation=TF.InterpolationMode.BILINEAR,
+        fill=0.0
+    )
+
     return mixed_tensor, source_tensor, label_tensor
 
 
@@ -220,7 +254,7 @@ if __name__ == "__main__":
     mixed_channel_data_dir = "/nemo/stp/lm/working/barryd/IDR/crosstalk_training_data_3/bleed"
     pure_source_data_dir = "/nemo/stp/lm/working/barryd/IDR/crosstalk_training_data_3/source"
 
-    BATCH_SIZE = 16
+    BATCH_SIZE = 32
     LEARNING_RATE = 0.0001
     NUM_EPOCHS = 50
     TARGET_IMAGE_SIZE = (256, 256)
@@ -305,7 +339,7 @@ if __name__ == "__main__":
     print("Dataloaders created for training, validation, and testing.")
 
     criterion = torch.nn.MSELoss()
-    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=1e-4)
 
     print("\nStarting training with validation...")
     train_losses, val_losses = train_model(model, train_dataloader, val_dataloader, criterion, optimizer, NUM_EPOCHS,

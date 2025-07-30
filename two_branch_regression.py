@@ -57,8 +57,9 @@ class RegressionHead(nn.Module):
             nn.ReLU(inplace=True),
             nn.Dropout(0.5),
 
-            nn.Linear(128, 1)  # Final scalar output
-            # For 0-1 range, consider nn.Sigmoid() here.
+            nn.Linear(128, 1),  # Final scalar output
+            nn.Sigmoid()
+        # For 0-1 range, consider nn.Sigmoid() here.
             # E.g., nn.Sequential(nn.Linear(128, 1), nn.Sigmoid())
         )
 
