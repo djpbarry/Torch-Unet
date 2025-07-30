@@ -11,7 +11,7 @@ import torchvision.transforms.functional as TF
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
-from regression_model import AdvancedRegressionModel
+from two_branch_regression import TwoBranchRegressionModel
 
 
 # --- Custom Dataset Classes (MODIFIED to use (image_id, alpha_value) as key) ---
@@ -230,7 +230,7 @@ if __name__ == "__main__":
     if not (abs(TRAIN_RATIO + VAL_RATIO) < 1.0):
         print("Warning: Sum of TRAIN_RATIO, VAL_RATIO, TEST_RATIO does not equal 1.0.")
 
-    model = AdvancedRegressionModel()
+    model = TwoBranchRegressionModel()
 
     print("\nCreating dataset instances for initial file listing...")
     try:
@@ -326,7 +326,7 @@ if __name__ == "__main__":
     print(f"Trained model weights saved to {model_save_path}")
 
     print("\n--- Evaluating Model on Test Set ---")
-    loaded_model = AdvancedRegressionModel()
+    loaded_model = TwoBranchRegressionModel()
     loaded_model.load_state_dict(torch.load(model_save_path, map_location=device))
     loaded_model.eval()
     loaded_model.to(device)
