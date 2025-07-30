@@ -12,7 +12,7 @@ import torchvision.transforms.functional as TF
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
-from two_branch_regression import TwoBranchRegressionModel
+from two_branch_regression import SimplifiedTwoBranchRegressionModel
 
 
 # --- Custom Dataset Classes (MODIFIED to use (image_id, alpha_value) as key) ---
@@ -131,53 +131,94 @@ class SplitCrosstalkDataset(Dataset):
 # --- End of Custom Dataset Classes ---
 
 
-# --- Transform Functions (no changes needed) ---
 def train_transforms_fn(mixed_np, source_np, scalar_label):
-    mixed_tensor = torch.from_numpy(mixed_np).unsqueeze(0)
-    source_tensor = torch.from_numpy(source_np).unsqueeze(0)
+    # Convert numpy arrays to PyTorch tensors and add channel dimension
+    # Ensure pixel values are normalized to [0, 1] if not already.
+    # IMPORTANT: Apply normalization here by dividing by 255.0 (or max pixel value)
+    mixed_tensor = torch.from_numpy(mixed_np).unsqueeze(0) / 255.0
+    source_tensor = torch.from_numpy(source_np).unsqueeze(0) / 255.0
     label_tensor = torch.tensor(scalar_label, dtype=torch.float32).unsqueeze(0)
 
+    # Horizontal Flip
     if torch.rand(1) < 0.5:
         mixed_tensor = TF.hflip(mixed_tensor)
         source_tensor = TF.hflip(source_tensor)
 
+    # Vertical Flip
     if torch.rand(1) < 0.5:
         mixed_tensor = TF.vflip(mixed_tensor)
         source_tensor = TF.vflip(source_tensor)
 
     img_h, img_w = mixed_tensor.shape[-2:]
 
-    # Example for rotation (needs to be applied to both identically)
-    angle = random.uniform(-15, 15)  # Get random angle
-
-    # Random translation (e.g., up to 10% of width/height)
-    # translate = (horizontal_shift_percentage, vertical_shift_percentage)
+    # Affine Transform Parameters:
+    degrees = random.uniform(-15, 15)
     translate_x = random.uniform(-0.1, 0.1) * img_w
     translate_y = random.uniform(-0.1, 0.1) * img_h
     translate = [translate_x, translate_y]
+    scale = random.uniform(0.8, 1.2)
+    shear = random.uniform(-5, 5)
 
     # Apply the generated affine transform to both tensors
-    # TF.affine(img, angle, translate, scale, shear, interpolation, fill)
-    # For single-channel images, interpolation=TF.InterpolationMode.BILINEAR is good.
-    # fill=0.0 (or pixel mean) for areas outside the image after transform.
     mixed_tensor = TF.affine(
         mixed_tensor,
-        angle=angle,
+        angle=degrees,
         translate=translate,
-        scale=1.0,
-        shear=[0.0],
+        scale=scale,
+        shear=shear,
         interpolation=TF.InterpolationMode.BILINEAR,
-        fill=[0.0]  # Fill value for pixels outside original image
+        fill=0.0
     )
     source_tensor = TF.affine(
         source_tensor,
-        angle=angle,
+        angle=degrees,
         translate=translate,
-        scale=1.0,
-        shear=[0.0],
+        scale=scale,
+        shear=shear,
         interpolation=TF.InterpolationMode.BILINEAR,
-        fill=[0.0]
+        fill=0.0
     )
+
+    # 3. Add Gaussian Noise (applied identically to both images)
+    # Adjust mean and std based on your image intensity range (now 0-1)
+    noise_mean = 0.0
+    noise_std = random.uniform(0.01, 0.05)  # Experiment with this range (e.g., 1-5% of max intensity)
+    gaussian_noise = torch.randn(mixed_tensor.shape) * noise_std + noise_mean
+
+    mixed_tensor = mixed_tensor + gaussian_noise
+    source_tensor = source_tensor + gaussian_noise
+
+    # Clip values to ensure they remain within [0, 1] after adding noise
+    mixed_tensor = torch.clamp(mixed_tensor, 0.0, 1.0)
+    source_tensor = torch.clamp(source_tensor, 0.0, 1.0)
+
+    # 4. Add Random Erasing (applied identically to both images for consistency)
+    # Generate random parameters for erasing once
+    if random.random() < 0.5:  # Probability of applying Random Erasing
+        # Get random parameters for erasing block
+        # i, j: top-left corner coordinates of the erased block
+        # h, w: height and width of the erased block
+        # v: value to fill the erased block with
+        area_ratio = random.uniform(0.02, 0.1)  # Erase 2% to 10% of the image area
+        aspect_ratio = random.uniform(0.3, 3.3)  # Aspect ratio of the erased block
+
+        # Calculate h and w from area_ratio and aspect_ratio
+        h = int(np.sqrt(area_ratio * img_h * img_w / aspect_ratio))
+        w = int(np.sqrt(area_ratio * img_h * img_w * aspect_ratio))
+
+        # Ensure h and w are not zero
+        h = max(1, h)
+        w = max(1, w)
+
+        i = random.randint(0, img_h - h)
+        j = random.randint(0, img_w - w)
+
+        mixed_tensor = TF.erase(
+            mixed_tensor, i, j, h, w, v=0.0
+        )
+        source_tensor = TF.erase(
+            source_tensor, i, j, h, w, v=0.0
+        )
 
     return mixed_tensor, source_tensor, label_tensor
 
@@ -255,8 +296,8 @@ if __name__ == "__main__":
     mixed_channel_data_dir = "/nemo/stp/lm/working/barryd/IDR/crosstalk_training_data_3/bleed"
     pure_source_data_dir = "/nemo/stp/lm/working/barryd/IDR/crosstalk_training_data_3/source"
 
-    BATCH_SIZE = 32
-    LEARNING_RATE = 0.0001
+    BATCH_SIZE = 16
+    LEARNING_RATE = 1e-5
     NUM_EPOCHS = 50
     TARGET_IMAGE_SIZE = (256, 256)
     TRAIN_RATIO = 0.7
@@ -265,7 +306,7 @@ if __name__ == "__main__":
     if not (abs(TRAIN_RATIO + VAL_RATIO) < 1.0):
         print("Warning: Sum of TRAIN_RATIO, VAL_RATIO, TEST_RATIO does not equal 1.0.")
 
-    model = TwoBranchRegressionModel(initial_filters_per_branch=32, input_image_size=TARGET_IMAGE_SIZE)
+    model = SimplifiedTwoBranchRegressionModel(initial_filters_per_branch=16, input_image_size=TARGET_IMAGE_SIZE)
 
     print("\nCreating dataset instances for initial file listing...")
     try:
@@ -343,7 +384,7 @@ if __name__ == "__main__":
     print("Dataloaders created for training, validation, and testing.")
 
     criterion = torch.nn.MSELoss()
-    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=1e-4)
+    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=1e-3)
 
     print("\nStarting training with validation...")
     train_losses, val_losses = train_model(model, train_dataloader, val_dataloader, criterion, optimizer, NUM_EPOCHS,
@@ -364,7 +405,7 @@ if __name__ == "__main__":
     print(f"Trained model weights saved to {model_save_path}")
 
     print("\n--- Evaluating Model on Test Set ---")
-    loaded_model = TwoBranchRegressionModel(initial_filters_per_branch=32, input_image_size=TARGET_IMAGE_SIZE)
+    loaded_model = SimplifiedTwoBranchRegressionModel(initial_filters_per_branch=16, input_image_size=TARGET_IMAGE_SIZE)
     loaded_model.load_state_dict(torch.load(model_save_path, map_location=device))
     loaded_model.eval()
     loaded_model.to(device)
