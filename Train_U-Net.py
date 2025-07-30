@@ -5,9 +5,11 @@ import re  # Import regex for pattern matching
 import imageio.v3 as iio
 import matplotlib.pyplot as plt
 import numpy as np
+import torch
 import torch.optim as optim
 import torchvision.transforms.functional as TF
 from torch.utils.data import Dataset, DataLoader
+from tqdm import tqdm
 
 from kimmel_net import RegressionModel
 
@@ -155,51 +157,55 @@ def val_test_transforms_fn(mixed_np, source_np, scalar_label):
 
 # --- End of Transform Functions ---
 
-
-# --- Training Function (no changes needed) ---
-import torch
-from tqdm import tqdm
-
-
-def train_model(model, train_loader, val_loader, criterion, optimizer, num_epochs, device):
+def train_model(model, train_loader, val_loader, criterion, optimizer, num_epochs, device,
+                log_csv_path='training_log.csv'):
     train_losses = []
     val_losses = []
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
 
     model.to(device)
 
-    for epoch in range(num_epochs):
-        model.train()
-        train_loss = 0.0
+    # Prepare the CSV log file
+    with open(log_csv_path, mode='w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(['epoch', 'train_loss', 'val_loss'])  # write header
 
-        for inputs, targets in tqdm(train_loader, desc=f"Epoch {epoch + 1}/{num_epochs} [Train]"):
-            inputs, targets = inputs.to(device), targets.to(device)
+        for epoch in range(num_epochs):
+            model.train()
+            train_loss = 0.0
 
-            optimizer.zero_grad()
-            outputs = model(inputs)
-            loss = criterion(outputs, targets)
-            loss.backward()
-            optimizer.step()
-
-            train_loss += loss.item() * inputs.size(0)
-
-        train_loss /= len(train_loader.dataset)
-        train_losses.append(train_loss)
-
-        model.eval()
-        val_loss = 0.0
-
-        with torch.no_grad():
-            for inputs, targets in tqdm(val_loader, desc=f"Epoch {epoch + 1}/{num_epochs} [Val]"):
+            for inputs, targets in tqdm(train_loader, desc=f"Epoch {epoch + 1}/{num_epochs} [Train]"):
                 inputs, targets = inputs.to(device), targets.to(device)
+
+                optimizer.zero_grad()
                 outputs = model(inputs)
                 loss = criterion(outputs, targets)
-                val_loss += loss.item() * inputs.size(0)
+                loss.backward()
+                optimizer.step()
 
-        val_loss /= len(val_loader.dataset)
-        val_losses.append(val_loss)
-        scheduler.step(val_loss)
-        print(f"Epoch [{epoch + 1}/{num_epochs}] | Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}")
+                train_loss += loss.item() * inputs.size(0)
+
+            train_loss /= len(train_loader.dataset)
+            train_losses.append(train_loss)
+
+            model.eval()
+            val_loss = 0.0
+
+            with torch.no_grad():
+                for inputs, targets in tqdm(val_loader, desc=f"Epoch {epoch + 1}/{num_epochs} [Val]"):
+                    inputs, targets = inputs.to(device), targets.to(device)
+                    outputs = model(inputs)
+                    loss = criterion(outputs, targets)
+                    val_loss += loss.item() * inputs.size(0)
+
+            val_loss /= len(val_loader.dataset)
+            val_losses.append(val_loss)
+            scheduler.step(val_loss)
+
+            print(f"Epoch [{epoch + 1}/{num_epochs}] | Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}")
+
+            # Log to CSV
+            writer.writerow([epoch + 1, train_loss, val_loss])
 
     return train_losses, val_losses
 
@@ -231,7 +237,7 @@ if __name__ == "__main__":
         # No label_mapping_file needed, as labels are derived from filenames
         temp_dataset = CrosstalkDataset(
             mixed_channel_data_dir, pure_source_data_dir,
-            transform=val_test_transforms_fn, max_samples=100
+            transform=val_test_transforms_fn, max_samples=200
         )
         print(f"Total samples found in directories: {len(temp_dataset)}")
     except Exception as e:
