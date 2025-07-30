@@ -149,14 +149,12 @@ def train_transforms_fn(mixed_np, source_np, scalar_label):
 
     # Example for rotation (needs to be applied to both identically)
     angle = random.uniform(-15, 15)  # Get random angle
-    mixed_tensor = TF.rotate(mixed_tensor, angle)
-    source_tensor = TF.rotate(source_tensor, angle)
 
     # Random translation (e.g., up to 10% of width/height)
     # translate = (horizontal_shift_percentage, vertical_shift_percentage)
     translate_x = random.uniform(-0.1, 0.1) * img_w
     translate_y = random.uniform(-0.1, 0.1) * img_h
-    translate = (translate_x, translate_y)
+    translate = [translate_x, translate_y]
 
     # Apply the generated affine transform to both tensors
     # TF.affine(img, angle, translate, scale, shear, interpolation, fill)
@@ -164,15 +162,21 @@ def train_transforms_fn(mixed_np, source_np, scalar_label):
     # fill=0.0 (or pixel mean) for areas outside the image after transform.
     mixed_tensor = TF.affine(
         mixed_tensor,
+        angle=angle,
         translate=translate,
+        scale=1.0,
+        shear=[0.0],
         interpolation=TF.InterpolationMode.BILINEAR,
-        fill=0.0  # Fill value for pixels outside original image
+        fill=[0.0]  # Fill value for pixels outside original image
     )
     source_tensor = TF.affine(
         source_tensor,
+        angle=angle,
         translate=translate,
+        scale=1.0,
+        shear=[0.0],
         interpolation=TF.InterpolationMode.BILINEAR,
-        fill=0.0
+        fill=[0.0]
     )
 
     return mixed_tensor, source_tensor, label_tensor
