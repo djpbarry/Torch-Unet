@@ -148,12 +148,9 @@ def train_transforms_fn(mixed_np, source_np, scalar_label):
     img_h, img_w = mixed_tensor.shape[-2:]
 
     # Example for rotation (needs to be applied to both identically)
-    angle = torch.RandomRotation.get_params([-15, 15])  # Get random angle
+    angle = random.uniform(-15, 15)  # Get random angle
     mixed_tensor = TF.rotate(mixed_tensor, angle)
     source_tensor = TF.rotate(source_tensor, angle)
-
-    # Random rotation degrees
-    degrees = random.uniform(-15, 15)  # Example: rotate between -15 and +15 degrees
 
     # Random translation (e.g., up to 10% of width/height)
     # translate = (horizontal_shift_percentage, vertical_shift_percentage)
