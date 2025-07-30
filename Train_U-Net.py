@@ -9,7 +9,7 @@ import torch.optim as optim
 import torchvision.transforms.functional as TF
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
-from sklearn.metrics import r2_score
+import matplotlib.pyplot as plt
 from kimmel_net import RegressionModel
 
 
@@ -165,63 +165,43 @@ def train_model(model, train_dataloader, val_dataloader, criterion, optimizer, n
     model.to(device)
     log_file_path = "training_log_regression.csv"
     file_exists = os.path.isfile(log_file_path)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=5, factor=0.5)
 
     with open(log_file_path, mode='a', newline='') as log_file:
         log_writer = csv.writer(log_file)
         if not file_exists:
             log_writer.writerow(["Epoch", "Train Loss", "Validation Loss"])
 
-        for epoch in range(num_epochs):
+        batch_x, batch_y = next(iter(train_dataloader))
+        batch_x, batch_y = batch_x.to(device), batch_y.to(device)
+        batch_y = batch_y.squeeze(1)
+
+        for epoch in range(50):
             model.train()
-            running_loss = 0.0
-
-            for batch_x, batch_y in train_dataloader:
-                batch_x, batch_y = batch_x.to(device), batch_y.to(device)
-                batch_y = batch_y.squeeze(1)
-
-                optimizer.zero_grad()
-                output = model(batch_x).squeeze(1)
-                loss = criterion(output, batch_y)
-                loss.backward()
-                optimizer.step()
-
-                running_loss += loss.item()
-
-            avg_loss = running_loss / len(train_dataloader)
-            print(f"Epoch {epoch}, Avg Loss: {avg_loss:.6f}")
-
-            model.eval()
-            val_running_loss = 0.0
-            with torch.no_grad():
-                for inputs, labels in tqdm(val_dataloader, desc=f"Epoch {epoch + 1}/{num_epochs} [Val]"):
-                    inputs = inputs.to(device, non_blocking=True)
-                    labels = labels.to(device, non_blocking=True)
-                    outputs = model(inputs)
-
-                    loss = criterion(outputs, labels)
-                    val_running_loss += loss.item() * inputs.size(0)
-
-            epoch_val_loss = val_running_loss / len(val_dataloader.dataset)
-            scheduler.step(epoch_val_loss)
-            print(f"Epoch {epoch + 1} Validation Loss: {epoch_val_loss:.6f}")
-            val_outputs_all = []
-            val_labels_all = []
-
-            with torch.no_grad():
-                for inputs, labels in val_dataloader:
-                    inputs = inputs.to(device)
-                    labels = labels.to(device)
-                    outputs = model(inputs).squeeze(1)
-                    val_outputs_all.append(outputs.cpu())
-                    val_labels_all.append(labels.cpu())
-
-            val_preds = torch.cat(val_outputs_all)
-            val_truth = torch.cat(val_labels_all)
-            r2 = r2_score(val_truth.numpy(), val_preds.numpy())
-            print(f"Epoch {epoch + 1} R² Score: {r2:.4f}")
+            optimizer.zero_grad()
+            output = model(batch_x).squeeze(1)
+            assert output.shape == batch_y.shape
+            loss = criterion(output, batch_y)
+            loss.backward()
+            optimizer.step()
+            print(f"Epoch {epoch}, Loss: {loss.item():.6f}")
 
     print("Training complete. Losses logged to training_log_regression.csv.")
+
+    # Collect all labels from the training dataloader
+    all_labels = []
+
+    for _, labels in train_dataloader:
+        all_labels.append(labels)
+
+    # Concatenate into a single tensor
+    all_labels = torch.cat(all_labels).cpu().numpy()
+
+    # Plot the label distribution
+    plt.hist(all_labels, bins=30)
+    plt.title("Distribution of Target Labels")
+    plt.xlabel("Label")
+    plt.ylabel("Frequency")
+    plt.savefig('label_distribution.pdf')
 
 
 # --- End of Training Function ---
