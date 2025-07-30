@@ -178,7 +178,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
             inputs, targets = inputs.to(device), targets.to(device)
 
             optimizer.zero_grad()
-            outputs = model(inputs).squeeze()  # squeeze to match shape if needed
+            outputs = model(inputs)
             loss = criterion(outputs, targets)
             loss.backward()
             optimizer.step()
