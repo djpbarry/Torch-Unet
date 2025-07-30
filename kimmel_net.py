@@ -9,19 +9,22 @@ class RegressionModel(nn.Module):
         # Define the convolutional layers
         self.conv_layers = nn.Sequential(
             nn.Conv2d(2, 64, kernel_size=3, padding=1),
-            #nn.BatchNorm2d(64),
+            nn.GroupNorm(8, 64),
             nn.ReLU(),
-            nn.MaxPool2d(2),  # down to 128x128
+            nn.Dropout2d(0.1),
+            nn.MaxPool2d(2),
 
             nn.Conv2d(64, 128, kernel_size=3, padding=1),
-            #nn.BatchNorm2d(128),
+            nn.GroupNorm(8, 128),
             nn.ReLU(),
-            nn.MaxPool2d(2),  # down to 64x64
+            nn.Dropout2d(0.1),
+            nn.MaxPool2d(2),
 
             nn.Conv2d(128, 256, kernel_size=3, padding=1),
-            #nn.BatchNorm2d(256),
+            nn.GroupNorm(8, 256),
             nn.ReLU(),
-            nn.MaxPool2d(2),  # down to 32x32
+            nn.Dropout2d(0.1),
+            nn.MaxPool2d(2),
         )
 
         # Global average pooling to reduce spatial dimensions to (1,1)
@@ -33,7 +36,9 @@ class RegressionModel(nn.Module):
         # Define the fully connected layers
         self.fc_layers = nn.Sequential(
             nn.Dropout(0.3),
-            nn.Linear(conv_output_size, 64),
+            nn.Linear(conv_output_size, 128),
+            nn.ReLU(),
+            nn.Linear(128, 64),
             nn.ReLU(),
             nn.Linear(64, 1)
         )

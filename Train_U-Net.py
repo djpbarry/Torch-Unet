@@ -14,7 +14,7 @@ from kimmel_net import RegressionModel
 
 # --- Custom Dataset Classes (MODIFIED to use (image_id, alpha_value) as key) ---
 class CrosstalkDataset(Dataset):
-    def __init__(self, mixed_channel_dir, pure_source_dir, transform=None):
+    def __init__(self, mixed_channel_dir, pure_source_dir, transform=None, max_samples=None):
         self.mixed_channel_dir = mixed_channel_dir
         self.pure_source_dir = pure_source_dir
         self.transform = transform
@@ -43,9 +43,6 @@ class CrosstalkDataset(Dataset):
                             if compound_key not in all_sample_info:
                                 all_sample_info[compound_key] = {}
                             all_sample_info[compound_key][f'{file_type_key}_file'] = filename
-                    else:
-                        # print(f"Warning: Filename '{filename}' in {directory} did not match pattern.")
-                        pass  # Suppress frequent warnings for non-matching files
 
         # Process mixed channel files
         process_files_in_dir(mixed_channel_dir, 'mixed')
@@ -61,9 +58,6 @@ class CrosstalkDataset(Dataset):
                     'mixed_channel_file': info['mixed_file'],
                     'pure_source_file': info['source_file']
                 })
-            # else:
-            # print(f"Warning: Skipping sample {(image_id, alpha_value_str)} due to missing mixed or source file.")
-            # Pass silently as this is expected for incomplete pairs.
 
         if not self.samples:
             raise ValueError(
@@ -73,6 +67,9 @@ class CrosstalkDataset(Dataset):
         # Sort samples for consistent order (important for splitting)
         # Sorting by image_id and then scalar_label to ensure stable order
         self.samples.sort(key=lambda x: (x['image_id'], x['scalar_label']))
+
+        if max_samples:
+            self.samples = self.samples[:max_samples]
         print(f"Found {len(self.samples)} matching samples.")
 
     def __len__(self):
@@ -167,6 +164,7 @@ from tqdm import tqdm
 def train_model(model, train_loader, val_loader, criterion, optimizer, num_epochs, device):
     train_losses = []
     val_losses = []
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
 
     model.to(device)
 
@@ -200,7 +198,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
 
         val_loss /= len(val_loader.dataset)
         val_losses.append(val_loss)
-
+        scheduler.step(val_loss)
         print(f"Epoch [{epoch + 1}/{num_epochs}] | Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}")
 
     return train_losses, val_losses
@@ -217,7 +215,7 @@ if __name__ == "__main__":
     pure_source_data_dir = "/nemo/stp/lm/working/barryd/IDR/crosstalk_training_data_3/source"
 
     BATCH_SIZE = 16
-    LEARNING_RATE = 0.001
+    LEARNING_RATE = 0.0001
     NUM_EPOCHS = 50
     TARGET_IMAGE_SIZE = (256, 256)
     TRAIN_RATIO = 0.7
@@ -233,7 +231,7 @@ if __name__ == "__main__":
         # No label_mapping_file needed, as labels are derived from filenames
         temp_dataset = CrosstalkDataset(
             mixed_channel_data_dir, pure_source_data_dir,
-            transform=val_test_transforms_fn
+            transform=val_test_transforms_fn, max_samples=100
         )
         print(f"Total samples found in directories: {len(temp_dataset)}")
     except Exception as e:
