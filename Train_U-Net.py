@@ -194,7 +194,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
         with torch.no_grad():
             for inputs, targets in tqdm(val_loader, desc=f"Epoch {epoch + 1}/{num_epochs} [Val]"):
                 inputs, targets = inputs.to(device), targets.to(device)
-                outputs = model(inputs).squeeze()
+                outputs = model(inputs)
                 loss = criterion(outputs, targets)
                 val_loss += loss.item() * inputs.size(0)
 
