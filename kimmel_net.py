@@ -8,23 +8,21 @@ class RegressionModel(nn.Module):
 
         # Define the convolutional layers
         self.conv_layers = nn.Sequential(
-            nn.Conv2d(2, 64, kernel_size=3, padding=1),
-            nn.GroupNorm(8, 64),
+            nn.Conv2d(2, 128, kernel_size=3, stride=1, padding=1),
             nn.ReLU(),
-            nn.Dropout2d(0.1),
-            nn.MaxPool2d(2),
+            nn.MaxPool2d(kernel_size=2, stride=2),
 
-            nn.Conv2d(64, 128, kernel_size=3, padding=1),
-            nn.GroupNorm(8, 128),
+            nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1),
             nn.ReLU(),
-            nn.Dropout2d(0.1),
-            nn.MaxPool2d(2),
+            nn.MaxPool2d(kernel_size=2, stride=2),
 
-            nn.Conv2d(128, 256, kernel_size=3, padding=1),
-            nn.GroupNorm(8, 256),
+            nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1),
             nn.ReLU(),
-            nn.Dropout2d(0.1),
-            nn.MaxPool2d(2),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+
+            nn.Conv2d(256, 128, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2, stride=2),
         )
 
         # Global average pooling to reduce spatial dimensions to (1,1)
