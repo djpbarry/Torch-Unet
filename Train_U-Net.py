@@ -265,7 +265,7 @@ if __name__ == "__main__":
     if not (abs(TRAIN_RATIO + VAL_RATIO) < 1.0):
         print("Warning: Sum of TRAIN_RATIO, VAL_RATIO, TEST_RATIO does not equal 1.0.")
 
-    model = TwoBranchRegressionModel()
+    model = TwoBranchRegressionModel(initial_filters_per_branch=32, input_image_size=TARGET_IMAGE_SIZE)
 
     print("\nCreating dataset instances for initial file listing...")
     try:
@@ -361,7 +361,7 @@ if __name__ == "__main__":
     print(f"Trained model weights saved to {model_save_path}")
 
     print("\n--- Evaluating Model on Test Set ---")
-    loaded_model = TwoBranchRegressionModel()
+    loaded_model = TwoBranchRegressionModel(initial_filters_per_branch=32, input_image_size=TARGET_IMAGE_SIZE)
     loaded_model.load_state_dict(torch.load(model_save_path, map_location=device))
     loaded_model.eval()
     loaded_model.to(device)
