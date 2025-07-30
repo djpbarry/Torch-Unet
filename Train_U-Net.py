@@ -318,7 +318,8 @@ if __name__ == "__main__":
         batch_size=BATCH_SIZE,
         shuffle=True,
         num_workers=int(os.getenv('SLURM_CPUS_PER_TASK', default=1)),
-        pin_memory=True
+        pin_memory=True,
+        drop_last=True
     )
 
     val_dataloader = DataLoader(
@@ -326,7 +327,8 @@ if __name__ == "__main__":
         batch_size=BATCH_SIZE,
         shuffle=False,
         num_workers=int(os.getenv('SLURM_CPUS_PER_TASK', default=1)),
-        pin_memory=True
+        pin_memory=True,
+        drop_last=True
     )
 
     test_dataloader = DataLoader(
@@ -334,7 +336,8 @@ if __name__ == "__main__":
         batch_size=BATCH_SIZE,
         shuffle=False,
         num_workers=int(os.getenv('SLURM_CPUS_PER_TASK', default=1)),
-        pin_memory=True
+        pin_memory=True,
+        drop_last=True
     )
 
     print("Dataloaders created for training, validation, and testing.")
