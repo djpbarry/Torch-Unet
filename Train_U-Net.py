@@ -3,13 +3,12 @@ import os
 import re  # Import regex for pattern matching
 
 import imageio.v3 as iio
+import matplotlib.pyplot as plt
 import numpy as np
-import torch
 import torch.optim as optim
 import torchvision.transforms.functional as TF
 from torch.utils.data import Dataset, DataLoader
-from tqdm import tqdm
-import matplotlib.pyplot as plt
+
 from kimmel_net import RegressionModel
 
 
@@ -161,47 +160,50 @@ def val_test_transforms_fn(mixed_np, source_np, scalar_label):
 
 
 # --- Training Function (no changes needed) ---
-def train_model(model, train_dataloader, val_dataloader, criterion, optimizer, num_epochs, device):
+import torch
+from tqdm import tqdm
+
+
+def train_model(model, train_loader, val_loader, criterion, optimizer, num_epochs, device):
+    train_losses = []
+    val_losses = []
+
     model.to(device)
-    log_file_path = "training_log_regression.csv"
-    file_exists = os.path.isfile(log_file_path)
 
-    with open(log_file_path, mode='a', newline='') as log_file:
-        log_writer = csv.writer(log_file)
-        if not file_exists:
-            log_writer.writerow(["Epoch", "Train Loss", "Validation Loss"])
+    for epoch in range(num_epochs):
+        model.train()
+        train_loss = 0.0
 
-        batch_x, batch_y = next(iter(train_dataloader))
-        batch_x, batch_y = batch_x.to(device), batch_y.to(device)
-        batch_y = batch_y.squeeze(1)
+        for inputs, targets in tqdm(train_loader, desc=f"Epoch {epoch + 1}/{num_epochs} [Train]"):
+            inputs, targets = inputs.to(device), targets.to(device)
 
-        for epoch in range(50):
-            model.train()
             optimizer.zero_grad()
-            output = model(batch_x).squeeze(1)
-            assert output.shape == batch_y.shape
-            loss = criterion(output, batch_y)
+            outputs = model(inputs).squeeze()  # squeeze to match shape if needed
+            loss = criterion(outputs, targets)
             loss.backward()
             optimizer.step()
-            print(f"Epoch {epoch}, Loss: {loss.item():.6f}")
 
-    print("Training complete. Losses logged to training_log_regression.csv.")
+            train_loss += loss.item() * inputs.size(0)
 
-    # Collect all labels from the training dataloader
-    all_labels = []
+        train_loss /= len(train_loader.dataset)
+        train_losses.append(train_loss)
 
-    for _, labels in train_dataloader:
-        all_labels.append(labels)
+        model.eval()
+        val_loss = 0.0
 
-    # Concatenate into a single tensor
-    all_labels = torch.cat(all_labels).cpu().numpy()
+        with torch.no_grad():
+            for inputs, targets in tqdm(val_loader, desc=f"Epoch {epoch + 1}/{num_epochs} [Val]"):
+                inputs, targets = inputs.to(device), targets.to(device)
+                outputs = model(inputs).squeeze()
+                loss = criterion(outputs, targets)
+                val_loss += loss.item() * inputs.size(0)
 
-    # Plot the label distribution
-    plt.hist(all_labels, bins=30)
-    plt.title("Distribution of Target Labels")
-    plt.xlabel("Label")
-    plt.ylabel("Frequency")
-    plt.savefig('label_distribution.pdf')
+        val_loss /= len(val_loader.dataset)
+        val_losses.append(val_loss)
+
+        print(f"Epoch [{epoch + 1}/{num_epochs}] | Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}")
+
+    return train_losses, val_losses
 
 
 # --- End of Training Function ---
@@ -298,11 +300,21 @@ if __name__ == "__main__":
 
     print("Dataloaders created for training, validation, and testing.")
 
-    criterion = torch.nn.SmoothL1Loss()
+    criterion = torch.nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
     print("\nStarting training with validation...")
-    train_model(model, train_dataloader, val_dataloader, criterion, optimizer, NUM_EPOCHS, device)
+    train_losses, val_losses = train_model(model, train_dataloader, val_dataloader, criterion, optimizer, NUM_EPOCHS,
+                                           device)
+
+    plt.plot(train_losses, label="Train Loss")
+    plt.plot(val_losses, label="Val Loss")
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.legend()
+    plt.title("Training and Validation Loss")
+    plt.savefig('Training_Loss.pdf')
+
     print("Training finished!")
 
     model_save_path = "crosstalk_regression_model_trained.pth"
