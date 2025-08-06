@@ -12,7 +12,7 @@ import torchvision.transforms.functional as TF
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
-from two_branch_regression import SimplifiedTwoBranchRegressionModel
+from kimmel_net import *
 
 
 # --- Custom Dataset Classes (MODIFIED to use (image_id, alpha_value) as key) ---
@@ -293,8 +293,8 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    mixed_channel_data_dir = "/nemo/stp/lm/working/barryd/IDR/crosstalk_training_data_3/bleed"
-    pure_source_data_dir = "/nemo/stp/lm/working/barryd/IDR/crosstalk_training_data_3/source"
+    mixed_channel_data_dir = "/nemo/stp/lm/working/barryd/IDR/crosstalk_training_data/bleed"
+    pure_source_data_dir = "/nemo/stp/lm/working/barryd/IDR/crosstalk_training_data/source"
 
     BATCH_SIZE = 16
     LEARNING_RATE = 1e-5
@@ -306,7 +306,7 @@ if __name__ == "__main__":
     if not (abs(TRAIN_RATIO + VAL_RATIO) < 1.0):
         print("Warning: Sum of TRAIN_RATIO, VAL_RATIO, TEST_RATIO does not equal 1.0.")
 
-    model = SimplifiedTwoBranchRegressionModel(initial_filters_per_branch=16, input_image_size=TARGET_IMAGE_SIZE)
+    model = RegressionModel()
 
     print("\nCreating dataset instances for initial file listing...")
     try:
@@ -405,7 +405,7 @@ if __name__ == "__main__":
     print(f"Trained model weights saved to {model_save_path}")
 
     print("\n--- Evaluating Model on Test Set ---")
-    loaded_model = SimplifiedTwoBranchRegressionModel(initial_filters_per_branch=16, input_image_size=TARGET_IMAGE_SIZE)
+    loaded_model = RegressionModel()
     loaded_model.load_state_dict(torch.load(model_save_path, map_location=device))
     loaded_model.eval()
     loaded_model.to(device)
