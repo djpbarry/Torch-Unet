@@ -296,7 +296,7 @@ if __name__ == "__main__":
     mixed_channel_data_dir = "/nemo/stp/lm/working/barryd/IDR/crosstalk_training_data/bleed"
     pure_source_data_dir = "/nemo/stp/lm/working/barryd/IDR/crosstalk_training_data/source"
 
-    BATCH_SIZE = 16
+    BATCH_SIZE = 256
     LEARNING_RATE = 1e-4
     NUM_EPOCHS = 50
     TARGET_IMAGE_SIZE = (256, 256)
