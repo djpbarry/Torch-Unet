@@ -1,3 +1,4 @@
+import argparse
 import csv
 import os
 import random
@@ -6,13 +7,14 @@ import re  # Import regex for pattern matching
 import imageio.v3 as iio
 import matplotlib.pyplot as plt
 import numpy as np
-import torch
 import torch.optim as optim
 import torchvision.transforms.functional as TF
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
 from kimmel_net import *
+
+TARGET_IMAGE_SIZE = (256, 256)
 
 
 # --- Custom Dataset Classes (MODIFIED to use (image_id, alpha_value) as key) ---
@@ -290,20 +292,34 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Script for training with various parameters.")
+
+    parser.add_argument("-m", "--mixed_channel_data_dir", type=str,
+                        default="/nemo/stp/lm/working/barryd/IDR/crosstalk_training_data/bleed",
+                        help="Directory for mixed channel data")
+    parser.add_argument("-s", "--pure_source_data_dir", type=str,
+                        default="/nemo/stp/lm/working/barryd/IDR/crosstalk_training_data/source",
+                        help="Directory for pure source data")
+    parser.add_argument("-b", "--batch_size", type=int, default=256, help="Batch size for training")
+    parser.add_argument("-l", "--learning_rate", type=float, default=1e-4, help="Learning rate for training")
+    parser.add_argument("-n", "--num_epochs", type=int, default=50, help="Number of epochs for training")
+    parser.add_argument("-t", "--train_ratio", type=float, default=0.7, help="Training data ratio")
+    parser.add_argument("-v", "--val_ratio", type=float, default=0.15, help="Validation data ratio")
+
+    args = parser.parse_args()
+
+    mixed_channel_data_dir = args.mixed_channel_data_dir
+    pure_source_data_dir = args.pure_source_data_dir
+    batch_size = args.batch_size
+    learning_rate = args.learning_rate
+    num_epochs = args.num_epochs
+    train_ratio = args.train_ratio
+    val_ratio = args.val_ratio
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    mixed_channel_data_dir = "/nemo/stp/lm/working/barryd/IDR/crosstalk_training_data/bleed"
-    pure_source_data_dir = "/nemo/stp/lm/working/barryd/IDR/crosstalk_training_data/source"
-
-    BATCH_SIZE = 256
-    LEARNING_RATE = 1e-4
-    NUM_EPOCHS = 50
-    TARGET_IMAGE_SIZE = (256, 256)
-    TRAIN_RATIO = 0.7
-    VAL_RATIO = 0.15
-
-    if not (abs(TRAIN_RATIO + VAL_RATIO) < 1.0):
+    if not (abs(train_ratio + val_ratio) < 1.0):
         print("Warning: Sum of TRAIN_RATIO, VAL_RATIO, TEST_RATIO does not equal 1.0.")
 
     model = RegressionModel()
@@ -326,8 +342,8 @@ if __name__ == "__main__":
     torch.manual_seed(42)
     shuffled_indices = torch.randperm(total_samples).tolist()
 
-    train_size = int(TRAIN_RATIO * total_samples)
-    val_size = int(VAL_RATIO * total_samples)
+    train_size = int(train_ratio * total_samples)
+    val_size = int(val_ratio * total_samples)
     test_size = total_samples - train_size - val_size
 
     train_samples = [all_samples[i] for i in shuffled_indices[0:train_size]]
@@ -356,7 +372,7 @@ if __name__ == "__main__":
 
     train_dataloader = DataLoader(
         train_dataset_final,
-        batch_size=BATCH_SIZE,
+        batch_size=batch_size,
         shuffle=True,
         num_workers=int(os.getenv('SLURM_CPUS_PER_TASK', default=1)),
         pin_memory=True,
@@ -365,7 +381,7 @@ if __name__ == "__main__":
 
     val_dataloader = DataLoader(
         val_dataset_final,
-        batch_size=BATCH_SIZE,
+        batch_size=batch_size,
         shuffle=False,
         num_workers=int(os.getenv('SLURM_CPUS_PER_TASK', default=1)),
         pin_memory=True,
@@ -374,7 +390,7 @@ if __name__ == "__main__":
 
     test_dataloader = DataLoader(
         test_dataset_final,
-        batch_size=BATCH_SIZE,
+        batch_size=batch_size,
         shuffle=False,
         num_workers=int(os.getenv('SLURM_CPUS_PER_TASK', default=1)),
         pin_memory=True,
@@ -384,10 +400,10 @@ if __name__ == "__main__":
     print("Dataloaders created for training, validation, and testing.")
 
     criterion = torch.nn.MSELoss()
-    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=1e-3)
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-3)
 
     print("\nStarting training with validation...")
-    train_losses, val_losses = train_model(model, train_dataloader, val_dataloader, criterion, optimizer, NUM_EPOCHS,
+    train_losses, val_losses = train_model(model, train_dataloader, val_dataloader, criterion, optimizer, num_epochs,
                                            device)
 
     plt.plot(train_losses, label="Train Loss")
