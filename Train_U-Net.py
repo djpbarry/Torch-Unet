@@ -297,7 +297,7 @@ if __name__ == "__main__":
     pure_source_data_dir = "/nemo/stp/lm/working/barryd/IDR/crosstalk_training_data/source"
 
     BATCH_SIZE = 16
-    LEARNING_RATE = 1e-5
+    LEARNING_RATE = 1e-4
     NUM_EPOCHS = 50
     TARGET_IMAGE_SIZE = (256, 256)
     TRAIN_RATIO = 0.7
