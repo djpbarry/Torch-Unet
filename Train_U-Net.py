@@ -3,7 +3,7 @@ import csv
 import os
 import random
 import re  # Import regex for pattern matching
-
+import torch
 import imageio.v3 as iio
 import matplotlib.pyplot as plt
 import numpy as np
@@ -12,7 +12,7 @@ import torchvision.transforms.functional as TF
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
-from kimmel_net import *
+from regression_model import AdvancedRegressionModel
 
 TARGET_IMAGE_SIZE = (256, 256)
 
@@ -322,7 +322,7 @@ if __name__ == "__main__":
     if not (abs(train_ratio + val_ratio) < 1.0):
         print("Warning: Sum of TRAIN_RATIO, VAL_RATIO, TEST_RATIO does not equal 1.0.")
 
-    model = RegressionModel()
+    model = AdvancedRegressionModel()
 
     print("\nCreating dataset instances for initial file listing...")
     try:
@@ -421,7 +421,7 @@ if __name__ == "__main__":
     print(f"Trained model weights saved to {model_save_path}")
 
     print("\n--- Evaluating Model on Test Set ---")
-    loaded_model = RegressionModel()
+    loaded_model = AdvancedRegressionModel()
     loaded_model.load_state_dict(torch.load(model_save_path, map_location=device))
     loaded_model.eval()
     loaded_model.to(device)
