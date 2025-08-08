@@ -38,7 +38,8 @@ class RegressionModel(nn.Module):
             nn.ReLU(),
             nn.Linear(128, 64),
             nn.ReLU(),
-            nn.Linear(64, 1)
+            nn.Linear(64, 1),
+            nn.Sigmoid()
         )
 
     def _get_conv_output(self, shape):
@@ -53,4 +54,4 @@ class RegressionModel(nn.Module):
         x = self.global_pool(x)
         x = torch.flatten(x, 1)  # flatten all but batch dimension
         x = self.fc_layers(x)
-        return torch.clamp(x, 0.0, 1.0)
+        return x
