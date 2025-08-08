@@ -244,7 +244,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
     model.to(device)
 
     # Create the timestamped log filename
-    timestamped_log_file = f"training_log_{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.csv"
+    timestamped_log_file = f"training_log_{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.csv"
 
     # Prepare the CSV log file
     with open(timestamped_log_file, mode='w', newline='') as f:
@@ -412,7 +412,7 @@ if __name__ == "__main__":
                                            device)
 
     print("Training finished!")
-    current_time = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     model_save_path = f"crosstalk_regression_model_trained_{current_time}.pth"
     torch.save(model.state_dict(), model_save_path)
     print(f"Trained model weights saved to {model_save_path}")
