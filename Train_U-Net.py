@@ -323,7 +323,7 @@ if __name__ == "__main__":
         print("Warning: Sum of TRAIN_RATIO, VAL_RATIO, TEST_RATIO does not equal 1.0.")
 
     model = RegressionModel()
-    print(f'Using {os.getenv('SLURM_CPUS_PER_TASK', default=1)} cpu workers.')
+    print(f'Using {os.getenv('SLURM_CPUS_PER_TASK', default=32)} cpu workers.')
     print("\nCreating dataset instances for initial file listing...")
     try:
         # No label_mapping_file needed, as labels are derived from filenames
@@ -374,7 +374,7 @@ if __name__ == "__main__":
         train_dataset_final,
         batch_size=batch_size,
         shuffle=True,
-        num_workers=int(os.getenv('SLURM_CPUS_PER_TASK', default=1)),
+        num_workers=int(os.getenv('SLURM_CPUS_PER_TASK', default=32)),
         pin_memory=True,
         drop_last=True
     )
@@ -383,7 +383,7 @@ if __name__ == "__main__":
         val_dataset_final,
         batch_size=batch_size,
         shuffle=False,
-        num_workers=int(os.getenv('SLURM_CPUS_PER_TASK', default=1)),
+        num_workers=int(os.getenv('SLURM_CPUS_PER_TASK', default=32)),
         pin_memory=True,
         drop_last=True
     )
@@ -392,7 +392,7 @@ if __name__ == "__main__":
         test_dataset_final,
         batch_size=batch_size,
         shuffle=False,
-        num_workers=int(os.getenv('SLURM_CPUS_PER_TASK', default=1)),
+        num_workers=int(os.getenv('SLURM_CPUS_PER_TASK', default=32)),
         pin_memory=True,
         drop_last=True
     )
