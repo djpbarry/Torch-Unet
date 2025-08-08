@@ -9,19 +9,23 @@ class RegressionModel(nn.Module):
         # Define the convolutional layers
         self.conv_layers = nn.Sequential(
             nn.Conv2d(2, 128, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
+            nn.BatchNorm2d(128),  # Added Batch Normalization
+            nn.LeakyReLU(0.01),   # Changed to LeakyReLU
             nn.MaxPool2d(kernel_size=2, stride=2),
 
             nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
+            nn.BatchNorm2d(256),  # Added Batch Normalization
+            nn.LeakyReLU(0.01),   # Changed to LeakyReLU
             nn.MaxPool2d(kernel_size=2, stride=2),
 
             nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
+            nn.BatchNorm2d(256),  # Added Batch Normalization
+            nn.LeakyReLU(0.01),   # Changed to LeakyReLU
             nn.MaxPool2d(kernel_size=2, stride=2),
 
             nn.Conv2d(256, 128, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
+            nn.BatchNorm2d(128),  # Added Batch Normalization
+            nn.LeakyReLU(0.01),   # Changed to LeakyReLU
             nn.MaxPool2d(kernel_size=2, stride=2),
         )
 
@@ -54,4 +58,4 @@ class RegressionModel(nn.Module):
         x = self.global_pool(x)
         x = torch.flatten(x, 1)  # flatten all but batch dimension
         x = self.fc_layers(x)
-        return x * 0.5
+        return x

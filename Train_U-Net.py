@@ -6,7 +6,6 @@ import re  # Import regex for pattern matching
 from datetime import datetime
 
 import imageio.v3 as iio
-import matplotlib.pyplot as plt
 import numpy as np
 import torch.optim as optim
 import torchvision.transforms.functional as TF
