@@ -1,8 +1,9 @@
 import argparse
 import csv
+import datetime
 import os
-import random
 import re  # Import regex for pattern matching
+from datetime import datetime
 
 import imageio.v3 as iio
 import matplotlib.pyplot as plt
@@ -235,17 +236,21 @@ def val_test_transforms_fn(mixed_np, source_np, scalar_label):
 
 # --- End of Transform Functions ---
 
-def train_model(model, train_loader, val_loader, criterion, optimizer, num_epochs, device,
-                log_csv_path='training_log.csv'):
+def train_model(model, train_loader, val_loader, criterion, optimizer, num_epochs, device):
     train_losses = []
     val_losses = []
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
 
     model.to(device)
 
+    # Create the timestamped log filename
+    timestamped_log_file = f"training_log_{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.csv"
+
     # Prepare the CSV log file
-    with open(log_csv_path, mode='w', newline='') as f:
+    with open(timestamped_log_file, mode='w', newline='') as f:
         writer = csv.writer(f)
+        writer.writerow(['Learning Rate', learning_rate])
+        writer.writerow(['Batch Size', batch_size])
         writer.writerow(['epoch', 'train_loss', 'val_loss'])  # write header
 
         for epoch in range(num_epochs):
@@ -457,12 +462,14 @@ if __name__ == "__main__":
     print("Test set evaluation complete.")
 
     # --- Save predictions to CSV ---
-    output_csv_path = "test_predictions.csv"
+    output_csv_path = f"test_predictions_{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.csv"
     with open(output_csv_path, mode='w', newline='') as csv_file:
         fieldnames = ['Actual_Label', 'Predicted_Label']
         writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
 
         writer.writeheader()
+        writer.writerow({'Learning Rate': learning_rate})
+        writer.writerow({'Batch Size': batch_size})
         writer.writerows(predictions_data)
 
     print(f"Test predictions saved to {output_csv_path}")
