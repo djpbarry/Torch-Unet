@@ -411,17 +411,9 @@ if __name__ == "__main__":
     train_losses, val_losses = train_model(model, train_dataloader, val_dataloader, criterion, optimizer, num_epochs,
                                            device)
 
-    plt.plot(train_losses, label="Train Loss")
-    plt.plot(val_losses, label="Val Loss")
-    plt.xlabel("Epoch")
-    plt.ylabel("Loss")
-    plt.legend()
-    plt.title("Training and Validation Loss")
-    plt.savefig('Training_Loss.pdf')
-
     print("Training finished!")
-
-    model_save_path = "crosstalk_regression_model_trained.pth"
+    current_time = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    model_save_path = f"crosstalk_regression_model_trained_{current_time}.pth"
     torch.save(model.state_dict(), model_save_path)
     print(f"Trained model weights saved to {model_save_path}")
 
@@ -462,7 +454,7 @@ if __name__ == "__main__":
     print("Test set evaluation complete.")
 
     # --- Save predictions to CSV ---
-    output_csv_path = f"test_predictions_{datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.csv"
+    output_csv_path = f"test_predictions_{current_time}.csv"
     with open(output_csv_path, mode='w', newline='') as csv_file:
         fieldnames = ['Actual_Label', 'Predicted_Label']
         writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
