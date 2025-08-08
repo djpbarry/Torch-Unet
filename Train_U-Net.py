@@ -151,44 +151,44 @@ def train_transforms_fn(mixed_np, source_np, scalar_label):
         mixed_tensor = TF.vflip(mixed_tensor)
         source_tensor = TF.vflip(source_tensor)
 
-    img_h, img_w = mixed_tensor.shape[-2:]
-
-    # Affine Transform Parameters:
-    degrees = random.uniform(-15, 15)
-    translate_x = random.uniform(-0.1, 0.1) * img_w
-    translate_y = random.uniform(-0.1, 0.1) * img_h
-    translate = [translate_x, translate_y]
-    scale = random.uniform(0.8, 1.2)
-    shear = random.uniform(-5, 5)
-
-    # Apply the generated affine transform to both tensors
-    mixed_tensor = TF.affine(
-        mixed_tensor,
-        angle=degrees,
-        translate=translate,
-        scale=scale,
-        shear=shear,
-        interpolation=TF.InterpolationMode.BILINEAR,
-        fill=0.0
-    )
-    source_tensor = TF.affine(
-        source_tensor,
-        angle=degrees,
-        translate=translate,
-        scale=scale,
-        shear=shear,
-        interpolation=TF.InterpolationMode.BILINEAR,
-        fill=0.0
-    )
+    # img_h, img_w = mixed_tensor.shape[-2:]
+    #
+    # # Affine Transform Parameters:
+    # degrees = random.uniform(-15, 15)
+    # translate_x = random.uniform(-0.1, 0.1) * img_w
+    # translate_y = random.uniform(-0.1, 0.1) * img_h
+    # translate = [translate_x, translate_y]
+    # scale = random.uniform(0.8, 1.2)
+    # shear = random.uniform(-5, 5)
+    #
+    # # Apply the generated affine transform to both tensors
+    # mixed_tensor = TF.affine(
+    #     mixed_tensor,
+    #     angle=degrees,
+    #     translate=translate,
+    #     scale=scale,
+    #     shear=shear,
+    #     interpolation=TF.InterpolationMode.BILINEAR,
+    #     fill=0.0
+    # )
+    # source_tensor = TF.affine(
+    #     source_tensor,
+    #     angle=degrees,
+    #     translate=translate,
+    #     scale=scale,
+    #     shear=shear,
+    #     interpolation=TF.InterpolationMode.BILINEAR,
+    #     fill=0.0
+    # )
 
     # 3. Add Gaussian Noise (applied identically to both images)
     # Adjust mean and std based on your image intensity range (now 0-1)
-    noise_mean = 0.0
-    noise_std = random.uniform(0.01, 0.05)  # Experiment with this range (e.g., 1-5% of max intensity)
-    gaussian_noise = torch.randn(mixed_tensor.shape) * noise_std + noise_mean
-
-    mixed_tensor = mixed_tensor + gaussian_noise
-    source_tensor = source_tensor + gaussian_noise
+    # noise_mean = 0.0
+    # noise_std = random.uniform(0.01, 0.05)  # Experiment with this range (e.g., 1-5% of max intensity)
+    # gaussian_noise = torch.randn(mixed_tensor.shape) * noise_std + noise_mean
+    #
+    # mixed_tensor = mixed_tensor + gaussian_noise
+    # source_tensor = source_tensor + gaussian_noise
 
     # Clip values to ensure they remain within [0, 1] after adding noise
     mixed_tensor = torch.clamp(mixed_tensor, 0.0, 1.0)
@@ -196,31 +196,31 @@ def train_transforms_fn(mixed_np, source_np, scalar_label):
 
     # 4. Add Random Erasing (applied identically to both images for consistency)
     # Generate random parameters for erasing once
-    if random.random() < 0.5:  # Probability of applying Random Erasing
-        # Get random parameters for erasing block
-        # i, j: top-left corner coordinates of the erased block
-        # h, w: height and width of the erased block
-        # v: value to fill the erased block with
-        area_ratio = random.uniform(0.02, 0.1)  # Erase 2% to 10% of the image area
-        aspect_ratio = random.uniform(0.3, 3.3)  # Aspect ratio of the erased block
-
-        # Calculate h and w from area_ratio and aspect_ratio
-        h = int(np.sqrt(area_ratio * img_h * img_w / aspect_ratio))
-        w = int(np.sqrt(area_ratio * img_h * img_w * aspect_ratio))
-
-        # Ensure h and w are not zero
-        h = max(1, h)
-        w = max(1, w)
-
-        i = random.randint(0, img_h - h)
-        j = random.randint(0, img_w - w)
-
-        mixed_tensor = TF.erase(
-            mixed_tensor, i, j, h, w, v=0.0
-        )
-        source_tensor = TF.erase(
-            source_tensor, i, j, h, w, v=0.0
-        )
+    # if random.random() < 0.5:  # Probability of applying Random Erasing
+    #     # Get random parameters for erasing block
+    #     # i, j: top-left corner coordinates of the erased block
+    #     # h, w: height and width of the erased block
+    #     # v: value to fill the erased block with
+    #     area_ratio = random.uniform(0.02, 0.1)  # Erase 2% to 10% of the image area
+    #     aspect_ratio = random.uniform(0.3, 3.3)  # Aspect ratio of the erased block
+    #
+    #     # Calculate h and w from area_ratio and aspect_ratio
+    #     h = int(np.sqrt(area_ratio * img_h * img_w / aspect_ratio))
+    #     w = int(np.sqrt(area_ratio * img_h * img_w * aspect_ratio))
+    #
+    #     # Ensure h and w are not zero
+    #     h = max(1, h)
+    #     w = max(1, w)
+    #
+    #     i = random.randint(0, img_h - h)
+    #     j = random.randint(0, img_w - w)
+    #
+    #     mixed_tensor = TF.erase(
+    #         mixed_tensor, i, j, h, w, v=0.0
+    #     )
+    #     source_tensor = TF.erase(
+    #         source_tensor, i, j, h, w, v=0.0
+    #     )
 
     return mixed_tensor, source_tensor, label_tensor
 
