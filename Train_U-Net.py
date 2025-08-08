@@ -138,8 +138,8 @@ def train_transforms_fn(mixed_np, source_np, scalar_label):
     # Convert numpy arrays to PyTorch tensors and add channel dimension
     # Ensure pixel values are normalized to [0, 1] if not already.
     # IMPORTANT: Apply normalization here by dividing by 255.0 (or max pixel value)
-    mixed_tensor = torch.from_numpy(mixed_np).unsqueeze(0) / 255.0
-    source_tensor = torch.from_numpy(source_np).unsqueeze(0) / 255.0
+    mixed_tensor = torch.from_numpy(mixed_np).unsqueeze(0)
+    source_tensor = torch.from_numpy(source_np).unsqueeze(0)
     label_tensor = torch.tensor(scalar_label, dtype=torch.float32).unsqueeze(0)
 
     # Horizontal Flip
