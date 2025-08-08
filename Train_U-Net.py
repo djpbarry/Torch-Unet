@@ -323,7 +323,7 @@ if __name__ == "__main__":
         print("Warning: Sum of TRAIN_RATIO, VAL_RATIO, TEST_RATIO does not equal 1.0.")
 
     model = RegressionModel()
-
+    print(f'Using {os.getenv('SLURM_CPUS_PER_TASK', default=1)} cpu workers.')
     print("\nCreating dataset instances for initial file listing...")
     try:
         # No label_mapping_file needed, as labels are derived from filenames
