@@ -58,4 +58,4 @@ class RegressionModel(nn.Module):
         x = self.global_pool(x)
         x = torch.flatten(x, 1)  # flatten all but batch dimension
         x = self.fc_layers(x)
-        return x
+        return x * 0.5

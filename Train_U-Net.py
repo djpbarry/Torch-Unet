@@ -455,12 +455,16 @@ if __name__ == "__main__":
     # --- Save predictions to CSV ---
     output_csv_path = f"test_predictions_{current_time}.csv"
     with open(output_csv_path, mode='w', newline='') as csv_file:
-        fieldnames = ['Actual_Label', 'Predicted_Label']
-        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+        # Use a regular csv.writer to write the parameters first
+        writer = csv.writer(csv_file)
+        writer.writerow(['Learning Rate', learning_rate])
+        writer.writerow(['Batch Size', batch_size])
 
-        writer.writeheader()
-        writer.writerow({'Learning Rate': learning_rate})
-        writer.writerow({'Batch Size': batch_size})
-        writer.writerows(predictions_data)
+        # Then, define the fieldnames for the DictWriter
+        fieldnames = ['Actual_Label', 'Predicted_Label']
+        dict_writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+
+        dict_writer.writeheader()
+        dict_writer.writerows(predictions_data)
 
     print(f"Test predictions saved to {output_csv_path}")
