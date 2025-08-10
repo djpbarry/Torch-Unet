@@ -309,6 +309,7 @@ if __name__ == "__main__":
     parser.add_argument("-n", "--num_epochs", type=int, default=50, help="Number of epochs for training")
     parser.add_argument("-t", "--train_ratio", type=float, default=0.7, help="Training data ratio")
     parser.add_argument("-v", "--val_ratio", type=float, default=0.15, help="Validation data ratio")
+    parser.add_argument("-j", "--cpu_jobs", type=int, default=1, help="Number of CPUs to use")
 
     args = parser.parse_args()
 
@@ -319,6 +320,7 @@ if __name__ == "__main__":
     num_epochs = args.num_epochs
     train_ratio = args.train_ratio
     val_ratio = args.val_ratio
+    ncpus = args.cpu_jobs
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
@@ -327,7 +329,7 @@ if __name__ == "__main__":
         print("Warning: Sum of TRAIN_RATIO, VAL_RATIO, TEST_RATIO does not equal 1.0.")
 
     model = RegressionModel()
-    print(f'Using {os.getenv('SLURM_CPUS_PER_TASK', default=32)} cpu workers.')
+    print(f'Using {ncpus} cpu workers.')
     print("\nCreating dataset instances for initial file listing...")
     try:
         # No label_mapping_file needed, as labels are derived from filenames
@@ -378,7 +380,7 @@ if __name__ == "__main__":
         train_dataset_final,
         batch_size=batch_size,
         shuffle=True,
-        num_workers=int(os.getenv('SLURM_CPUS_PER_TASK', default=32)),
+        num_workers=ncpus,
         pin_memory=True,
         drop_last=True
     )
@@ -387,7 +389,7 @@ if __name__ == "__main__":
         val_dataset_final,
         batch_size=batch_size,
         shuffle=False,
-        num_workers=int(os.getenv('SLURM_CPUS_PER_TASK', default=32)),
+        num_workers=ncpus,
         pin_memory=True,
         drop_last=True
     )
@@ -396,7 +398,7 @@ if __name__ == "__main__":
         test_dataset_final,
         batch_size=batch_size,
         shuffle=False,
-        num_workers=int(os.getenv('SLURM_CPUS_PER_TASK', default=32)),
+        num_workers=ncpus,
         pin_memory=True,
         drop_last=True
     )
