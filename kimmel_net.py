@@ -37,13 +37,15 @@ class RegressionModel(nn.Module):
 
         # Define the fully connected layers
         self.fc_layers = nn.Sequential(
-            nn.Dropout(0.3),
-            nn.Linear(conv_output_size, 128),
-            nn.ReLU(),
-            nn.Linear(128, 64),
-            nn.ReLU(),
-            nn.Linear(64, 1),
-            nn.Sigmoid()
+            nn.Dropout(0.1),
+            nn.Linear(conv_output_size, 256),  # Increased from 128 to 256
+            nn.BatchNorm1d(256),              # Adjust BatchNorm for new size
+            nn.LeakyReLU(0.01),
+            nn.Linear(256, 128),              # Increased from 64 to 128
+            nn.BatchNorm1d(128),              # Adjust BatchNorm for new size
+            nn.LeakyReLU(0.01),
+            nn.Linear(128, 1),
+            nn.Sigmoid() # Outputs values between 0 and 1
         )
 
     def _get_conv_output(self, shape):
