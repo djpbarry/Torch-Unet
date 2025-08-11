@@ -36,17 +36,17 @@ class AdvancedRegressionModel(nn.Module):
             nn.Linear(conv_output_size, 512),  # First FC layer, larger output
             nn.BatchNorm1d(512),  # BatchNorm for FC layers too
             nn.LeakyReLU(0.01),
-            nn.Dropout(0.5),  # Regularization
+            nn.Dropout(0.1),  # Regularization
 
             nn.Linear(512, 128),  # Second FC layer
             nn.BatchNorm1d(128),
             nn.LeakyReLU(0.01),
-            nn.Dropout(0.5),
+            nn.Dropout(0.1),
 
-            nn.Linear(128, 1)  # Output layer for scalar regression
+            nn.Linear(128, 1),  # Output layer for scalar regression
             # No activation here if your target is unbounded, or Sigmoid for [0,1] range
             # For alpha values (0 to 1), a Sigmoid might be considered, but direct prediction often works.
-            # If Sigmoid is used: nn.Sigmoid()
+            nn.Sigmoid()
         )
 
     def _get_conv_output(self, shape):
@@ -58,4 +58,4 @@ class AdvancedRegressionModel(nn.Module):
     def forward(self, x):
         x = self.conv_layers(x)
         x = self.fc_layers(x)
-        return x
+        return x * 0.5
