@@ -455,7 +455,7 @@ if __name__ == "__main__":
     print("Test set evaluation complete.")
 
     # --- Save predictions to CSV ---
-    output_csv_path = f"test_predictions_{current_time}.csv"
+    output_csv_path = f"test_predictions_{current_time}_{batch_size}_{learning_rate}.csv"
     with open(output_csv_path, mode='w', newline='') as csv_file:
         # Use a regular csv.writer to write the parameters first
         writer = csv.writer(csv_file)
