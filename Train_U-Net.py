@@ -6,6 +6,7 @@ import re  # Import regex for pattern matching
 from datetime import datetime
 
 import imageio.v3 as iio
+import matplotlib.pyplot as plt
 import numpy as np
 import torch.optim as optim
 import torchvision.transforms.functional as TF
@@ -418,6 +419,21 @@ if __name__ == "__main__":
     torch.save(model.state_dict(), model_save_path)
     print(f"Trained model weights saved to {model_save_path}")
 
+    # --- Plot Training and Validation Losses ---
+    plt.figure(figsize=(10, 6))
+    plt.plot(range(1, num_epochs + 1), train_losses, label="Train Loss")
+    plt.plot(range(1, num_epochs + 1), val_losses, label="Val Loss")
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.ylim(bottom=0, top=0.2)
+    plt.title("Training and Validation Loss Over Epochs")
+    plt.legend()
+    plt.grid(True)
+    loss_plot_path = f"training_validation_loss_{current_time}_{batch_size}_{learning_rate}.png"
+    plt.savefig(loss_plot_path)
+    print(f"Training and validation loss plot saved to {loss_plot_path}")
+    plt.close()  # Close the plot to free memory
+
     print("\n--- Evaluating Model on Test Set ---")
     loaded_model = AdvancedRegressionModel()
     loaded_model.load_state_dict(torch.load(model_save_path, map_location=device))
@@ -470,3 +486,21 @@ if __name__ == "__main__":
         dict_writer.writerows(predictions_data)
 
     print(f"Test predictions saved to {output_csv_path}")
+
+    # --- Plot Test Results (Actual vs. Predicted) ---
+    actual_labels_all = [d['Actual_Label'] for d in predictions_data]
+    predicted_labels_all = [d['Predicted_Label'] for d in predictions_data]
+
+    plt.figure(figsize=(8, 8))
+    plt.scatter(actual_labels_all, predicted_labels_all, alpha=0.6, s=10)
+    plt.plot([min(actual_labels_all), max(actual_labels_all)],
+             [min(actual_labels_all), max(actual_labels_all)],
+             '--r', label='Ideal Prediction (y=x)')  # Plot a y=x line
+    plt.xlabel("Actual Label")
+    plt.ylabel("Predicted Label")
+    plt.title("Test Set: Actual vs. Predicted Labels")
+    plt.legend()
+    test_plot_path = f"test_predictions_plot_{current_time}_{batch_size}_{learning_rate}.png"
+    plt.savefig(test_plot_path)
+    print(f"Test predictions plot saved to {test_plot_path}")
+    plt.close()  # Close the plot to free memory
