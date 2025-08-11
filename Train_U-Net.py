@@ -12,7 +12,7 @@ import torchvision.transforms.functional as TF
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
-from kimmel_net import *
+from regression_model import *
 
 TARGET_IMAGE_SIZE = (256, 256)
 
@@ -243,7 +243,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
     model.to(device)
 
     # Create the timestamped log filename
-    timestamped_log_file = f"training_log_{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}.csv"
+    timestamped_log_file = f"training_log_{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}_{batch_size}_{learning_rate}.csv"
 
     # Prepare the CSV log file
     with open(timestamped_log_file, mode='w', newline='') as f:
@@ -328,7 +328,7 @@ if __name__ == "__main__":
     if not (abs(train_ratio + val_ratio) < 1.0):
         print("Warning: Sum of TRAIN_RATIO, VAL_RATIO, TEST_RATIO does not equal 1.0.")
 
-    model = RegressionModel()
+    model = AdvancedRegressionModel()
     print(f'Using {ncpus} cpu workers.')
     print("\nCreating dataset instances for initial file listing...")
     try:
@@ -414,12 +414,12 @@ if __name__ == "__main__":
 
     print("Training finished!")
     current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    model_save_path = f"crosstalk_regression_model_trained_{current_time}.pth"
+    model_save_path = f"crosstalk_regression_model_trained_{current_time}_{batch_size}_{learning_rate}.pth"
     torch.save(model.state_dict(), model_save_path)
     print(f"Trained model weights saved to {model_save_path}")
 
     print("\n--- Evaluating Model on Test Set ---")
-    loaded_model = RegressionModel()
+    loaded_model = AdvancedRegressionModel()
     loaded_model.load_state_dict(torch.load(model_save_path, map_location=device))
     loaded_model.eval()
     loaded_model.to(device)
