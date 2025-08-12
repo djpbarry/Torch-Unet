@@ -329,7 +329,7 @@ if __name__ == "__main__":
     if not (abs(train_ratio + val_ratio) < 1.0):
         print("Warning: Sum of TRAIN_RATIO, VAL_RATIO, TEST_RATIO does not equal 1.0.")
 
-    model = AdvancedRegressionModel()
+    model = AdvancedRegressionModel(initial_filters=128, num_conv_blocks=6)
     print(f'Using {ncpus} cpu workers.')
     print("\nCreating dataset instances for initial file listing...")
     try:
@@ -425,7 +425,7 @@ if __name__ == "__main__":
     plt.plot(range(1, num_epochs + 1), val_losses, label="Val Loss")
     plt.xlabel("Epoch")
     plt.ylabel("Loss")
-    plt.ylim(bottom=0, top=0.2)
+    plt.ylim(bottom=0, top=0.02)
     plt.title("Training and Validation Loss Over Epochs")
     plt.legend()
     plt.grid(True)
@@ -435,7 +435,7 @@ if __name__ == "__main__":
     plt.close()  # Close the plot to free memory
 
     print("\n--- Evaluating Model on Test Set ---")
-    loaded_model = AdvancedRegressionModel()
+    loaded_model = AdvancedRegressionModel(initial_filters=128, num_conv_blocks=6)
     loaded_model.load_state_dict(torch.load(model_save_path, map_location=device))
     loaded_model.eval()
     loaded_model.to(device)
