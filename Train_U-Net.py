@@ -504,3 +504,79 @@ if __name__ == "__main__":
     plt.savefig(test_plot_path)
     print(f"Test predictions plot saved to {test_plot_path}")
     plt.close()  # Close the plot to free memory
+
+    train_predictions_data = []
+
+    with torch.no_grad():
+        for i, (inputs, labels) in enumerate(tqdm(train_dataloader, desc="Train Set Evaluation")):
+            inputs = inputs.to(device)
+            labels = labels.to(device)  # Shape: (batch_size, 1)
+
+            outputs = loaded_model(inputs)  # Shape: (batch_size, 1)
+
+            # Store actual and predicted values
+            # Move tensors to CPU and convert to numpy arrays, then flatten to 1D list
+            actual_labels = labels.cpu().numpy().flatten()
+            predicted_labels = outputs.cpu().numpy().flatten()
+
+            # For each sample in the current batch, append its actual and predicted value
+            for j in range(len(actual_labels)):
+                train_predictions_data.append({
+                    'Actual_Label': actual_labels[j],
+                    'Predicted_Label': predicted_labels[j]
+                })
+
+    actual_labels_all = [d['Actual_Label'] for d in train_predictions_data]
+    predicted_labels_all = [d['Predicted_Label'] for d in train_predictions_data]
+
+    plt.figure(figsize=(8, 8))
+    plt.scatter(actual_labels_all, predicted_labels_all, alpha=0.6, s=10)
+    plt.plot([min(actual_labels_all), max(actual_labels_all)],
+             [min(actual_labels_all), max(actual_labels_all)],
+             '--r', label='Ideal Prediction (y=x)')  # Plot a y=x line
+    plt.xlabel("Actual Label")
+    plt.ylabel("Predicted Label")
+    plt.title("Train Set: Actual vs. Predicted Labels")
+    plt.legend()
+    test_plot_path = f"train_predictions_plot_{current_time}_{batch_size}_{learning_rate}.png"
+    plt.savefig(test_plot_path)
+    print(f"Train predictions plot saved to {test_plot_path}")
+    plt.close()  # Close the plot to free memory
+
+    val_predictions_data = []
+
+    with torch.no_grad():
+        for i, (inputs, labels) in enumerate(tqdm(val_dataloader, desc="Val Set Evaluation")):
+            inputs = inputs.to(device)
+            labels = labels.to(device)  # Shape: (batch_size, 1)
+
+            outputs = loaded_model(inputs)  # Shape: (batch_size, 1)
+
+            # Store actual and predicted values
+            # Move tensors to CPU and convert to numpy arrays, then flatten to 1D list
+            actual_labels = labels.cpu().numpy().flatten()
+            predicted_labels = outputs.cpu().numpy().flatten()
+
+            # For each sample in the current batch, append its actual and predicted value
+            for j in range(len(actual_labels)):
+                val_predictions_data.append({
+                    'Actual_Label': actual_labels[j],
+                    'Predicted_Label': predicted_labels[j]
+                })
+
+    actual_labels_all = [d['Actual_Label'] for d in val_predictions_data]
+    predicted_labels_all = [d['Predicted_Label'] for d in val_predictions_data]
+
+    plt.figure(figsize=(8, 8))
+    plt.scatter(actual_labels_all, predicted_labels_all, alpha=0.6, s=10)
+    plt.plot([min(actual_labels_all), max(actual_labels_all)],
+             [min(actual_labels_all), max(actual_labels_all)],
+             '--r', label='Ideal Prediction (y=x)')  # Plot a y=x line
+    plt.xlabel("Actual Label")
+    plt.ylabel("Predicted Label")
+    plt.title("Val Set: Actual vs. Predicted Labels")
+    plt.legend()
+    test_plot_path = f"val_predictions_plot_{current_time}_{batch_size}_{learning_rate}.png"
+    plt.savefig(test_plot_path)
+    print(f"Val predictions plot saved to {test_plot_path}")
+    plt.close()  # Close the plot to free memory
