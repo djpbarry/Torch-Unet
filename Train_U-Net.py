@@ -4,7 +4,7 @@ import datetime
 import os
 import re  # Import regex for pattern matching
 from datetime import datetime
-
+import random
 import imageio.v3 as iio
 import matplotlib.pyplot as plt
 import numpy as np
@@ -152,44 +152,45 @@ def train_transforms_fn(mixed_np, source_np, scalar_label):
         mixed_tensor = TF.vflip(mixed_tensor)
         source_tensor = TF.vflip(source_tensor)
 
-    # img_h, img_w = mixed_tensor.shape[-2:]
-    #
-    # # Affine Transform Parameters:
-    # degrees = random.uniform(-15, 15)
-    # translate_x = random.uniform(-0.1, 0.1) * img_w
-    # translate_y = random.uniform(-0.1, 0.1) * img_h
-    # translate = [translate_x, translate_y]
-    # scale = random.uniform(0.8, 1.2)
-    # shear = random.uniform(-5, 5)
-    #
-    # # Apply the generated affine transform to both tensors
-    # mixed_tensor = TF.affine(
-    #     mixed_tensor,
-    #     angle=degrees,
-    #     translate=translate,
-    #     scale=scale,
-    #     shear=shear,
-    #     interpolation=TF.InterpolationMode.BILINEAR,
-    #     fill=0.0
-    # )
-    # source_tensor = TF.affine(
-    #     source_tensor,
-    #     angle=degrees,
-    #     translate=translate,
-    #     scale=scale,
-    #     shear=shear,
-    #     interpolation=TF.InterpolationMode.BILINEAR,
-    #     fill=0.0
-    # )
+    img_h, img_w = mixed_tensor.shape[-2:]
+
+    # Affine Transform Parameters:
+    degrees = random.uniform(-15, 15)
+    translate_x = random.uniform(-0.1, 0.1) * img_w
+    translate_y = random.uniform(-0.1, 0.1) * img_h
+    translate = [translate_x, translate_y]
+    scale = 1.0
+    shear = [0.0]
+    fill = [0.0]
+
+    # Apply the generated affine transform to both tensors
+    mixed_tensor = TF.affine(
+        mixed_tensor,
+        angle=degrees,
+        translate=translate,
+        scale=scale,
+        shear=shear,
+        interpolation=TF.InterpolationMode.BILINEAR,
+        fill=fill
+    )
+    source_tensor = TF.affine(
+        source_tensor,
+        angle=degrees,
+        translate=translate,
+        scale=scale,
+        shear=shear,
+        interpolation=TF.InterpolationMode.BILINEAR,
+        fill=fill
+    )
 
     # 3. Add Gaussian Noise (applied identically to both images)
     # Adjust mean and std based on your image intensity range (now 0-1)
-    # noise_mean = 0.0
-    # noise_std = random.uniform(0.01, 0.05)  # Experiment with this range (e.g., 1-5% of max intensity)
-    # gaussian_noise = torch.randn(mixed_tensor.shape) * noise_std + noise_mean
-    #
-    # mixed_tensor = mixed_tensor + gaussian_noise
-    # source_tensor = source_tensor + gaussian_noise
+    noise_mean = 0.0
+    noise_std = random.uniform(0.01, 0.05)  # Experiment with this range (e.g., 1-5% of max intensity)
+    gaussian_noise = torch.randn(mixed_tensor.shape) * noise_std + noise_mean
+
+    mixed_tensor = mixed_tensor + gaussian_noise
+    source_tensor = source_tensor + gaussian_noise
 
     # Clip values to ensure they remain within [0, 1] after adding noise
     mixed_tensor = torch.clamp(mixed_tensor, 0.0, 1.0)
