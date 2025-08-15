@@ -152,49 +152,49 @@ def train_transforms_fn(mixed_np, source_np, scalar_label):
         mixed_tensor = TF.vflip(mixed_tensor)
         source_tensor = TF.vflip(source_tensor)
 
-    img_h, img_w = mixed_tensor.shape[-2:]
+    # img_h, img_w = mixed_tensor.shape[-2:]
+    #
+    # # Affine Transform Parameters:
+    # degrees = random.uniform(-15, 15)
+    # translate_x = random.uniform(-0.1, 0.1) * img_w
+    # translate_y = random.uniform(-0.1, 0.1) * img_h
+    # translate = [translate_x, translate_y]
+    # scale = 1.0
+    # shear = [0.0]
+    # fill = [0.0]
+    #
+    # # Apply the generated affine transform to both tensors
+    # mixed_tensor = TF.affine(
+    #     mixed_tensor,
+    #     angle=degrees,
+    #     translate=translate,
+    #     scale=scale,
+    #     shear=shear,
+    #     interpolation=TF.InterpolationMode.BILINEAR,
+    #     fill=fill
+    # )
+    # source_tensor = TF.affine(
+    #     source_tensor,
+    #     angle=degrees,
+    #     translate=translate,
+    #     scale=scale,
+    #     shear=shear,
+    #     interpolation=TF.InterpolationMode.BILINEAR,
+    #     fill=fill
+    # )
 
-    # Affine Transform Parameters:
-    degrees = random.uniform(-15, 15)
-    translate_x = random.uniform(-0.1, 0.1) * img_w
-    translate_y = random.uniform(-0.1, 0.1) * img_h
-    translate = [translate_x, translate_y]
-    scale = 1.0
-    shear = [0.0]
-    fill = [0.0]
-
-    # Apply the generated affine transform to both tensors
-    mixed_tensor = TF.affine(
-        mixed_tensor,
-        angle=degrees,
-        translate=translate,
-        scale=scale,
-        shear=shear,
-        interpolation=TF.InterpolationMode.BILINEAR,
-        fill=fill
-    )
-    source_tensor = TF.affine(
-        source_tensor,
-        angle=degrees,
-        translate=translate,
-        scale=scale,
-        shear=shear,
-        interpolation=TF.InterpolationMode.BILINEAR,
-        fill=fill
-    )
-
-    # 3. Add Gaussian Noise (applied identically to both images)
-    # Adjust mean and std based on your image intensity range (now 0-1)
-    noise_mean = 0.0
-    noise_std = random.uniform(0.01, 0.05)  # Experiment with this range (e.g., 1-5% of max intensity)
-    gaussian_noise = torch.randn(mixed_tensor.shape) * noise_std + noise_mean
-
-    mixed_tensor = mixed_tensor + gaussian_noise
-    source_tensor = source_tensor + gaussian_noise
-
-    # Clip values to ensure they remain within [0, 1] after adding noise
-    mixed_tensor = torch.clamp(mixed_tensor, 0.0, 1.0)
-    source_tensor = torch.clamp(source_tensor, 0.0, 1.0)
+    # # 3. Add Gaussian Noise (applied identically to both images)
+    # # Adjust mean and std based on your image intensity range (now 0-1)
+    # noise_mean = 0.0
+    # noise_std = random.uniform(0.01, 0.05)  # Experiment with this range (e.g., 1-5% of max intensity)
+    # gaussian_noise = torch.randn(mixed_tensor.shape) * noise_std + noise_mean
+    #
+    # mixed_tensor = mixed_tensor + gaussian_noise
+    # source_tensor = source_tensor + gaussian_noise
+    #
+    # # Clip values to ensure they remain within [0, 1] after adding noise
+    # mixed_tensor = torch.clamp(mixed_tensor, 0.0, 1.0)
+    # source_tensor = torch.clamp(source_tensor, 0.0, 1.0)
 
     # 4. Add Random Erasing (applied identically to both images for consistency)
     # Generate random parameters for erasing once
@@ -347,7 +347,7 @@ if __name__ == "__main__":
     print("\nSplitting data using filename lists for correct augmentation application...")
     all_samples = temp_dataset.samples  # This now holds the list of dictionaries with all sample info
     total_samples = len(all_samples)
-    torch.manual_seed(42)
+    torch.manual_seed(43)
     shuffled_indices = torch.randperm(total_samples).tolist()
 
     train_size = int(train_ratio * total_samples)
