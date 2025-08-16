@@ -13,9 +13,8 @@ import torchvision.transforms.functional as TF
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
+from regression_model import *
 from two_branch_regression import *
-
-# from datetime import datetime
 
 TARGET_IMAGE_SIZE = (256, 256)
 
@@ -384,6 +383,8 @@ if __name__ == "__main__":
     parser.add_argument("-t", "--train_ratio", type=float, default=0.7, help="Training data ratio")
     parser.add_argument("-v", "--val_ratio", type=float, default=0.15, help="Validation data ratio")
     parser.add_argument("-j", "--cpu_jobs", type=int, default=1, help="Number of CPUs to use")
+    parser.add_argument("-o", "--model_options", type=str, default='single', help="Use single- or double-branch model",
+                        choices=['single', 'double'])
 
     args = parser.parse_args()
 
@@ -395,6 +396,7 @@ if __name__ == "__main__":
     train_ratio = args.train_ratio
     val_ratio = args.val_ratio
     ncpus = args.cpu_jobs
+    model_selection = args.model_options
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
@@ -402,7 +404,10 @@ if __name__ == "__main__":
     if not (abs(train_ratio + val_ratio) < 1.0):
         print("Warning: Sum of TRAIN_RATIO, VAL_RATIO, TEST_RATIO does not equal 1.0.")
 
-    model = SimplifiedTwoBranchRegressionModel(initial_filters_per_branch=64)
+    if model_selection == 'double':
+        model = SimplifiedTwoBranchRegressionModel(initial_filters_per_branch=64)
+    else:
+        model = AdvancedRegressionModel(initial_filters=128, num_conv_blocks=6)
     print(f'Using {ncpus} cpu workers.')
 
     # --- Create a unique output directory for this run ---
@@ -532,7 +537,10 @@ if __name__ == "__main__":
     plt.close()  # Close the plot to free memory
 
     print("\n--- Evaluating Model ---")
-    loaded_model = SimplifiedTwoBranchRegressionModel(initial_filters_per_branch=64)
+    if model_selection == 'double':
+        loaded_model = SimplifiedTwoBranchRegressionModel(initial_filters_per_branch=64)
+    else:
+        loaded_model = AdvancedRegressionModel(initial_filters=128, num_conv_blocks=6)
     loaded_model.load_state_dict(torch.load(model_save_path, map_location=device))
     loaded_model.eval()
     loaded_model.to(device)
