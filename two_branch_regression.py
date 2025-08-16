@@ -42,12 +42,12 @@ class SimplifiedRegressionHead(nn.Module):
             nn.Linear(input_feature_size, 512),  # Reduced from 512
             nn.BatchNorm1d(512),
             nn.LeakyReLU(0.01),
-            nn.Dropout(0.4),  # Slightly reduced dropout, you can experiment
+            nn.Dropout(0.5),  # Slightly reduced dropout, you can experiment
 
             nn.Linear(512, 128), # Reduced from 512
             nn.BatchNorm1d(128),
             nn.LeakyReLU(0.01),
-            nn.Dropout(0.4), # Slightly reduced dropout, you can experiment
+            nn.Dropout(0.5), # Slightly reduced dropout, you can experiment
 
             nn.Linear(128, 1), # Only one hidden FC layer
             nn.Sigmoid() # Keep Sigmoid if alpha is strictly [0,1]
