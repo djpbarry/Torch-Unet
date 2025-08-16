@@ -3,32 +3,32 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class SimplifiedFeatureExtractionBranch(nn.Module):
-    def __init__(self, in_channels=1, initial_filters=16): # Reduced initial_filters
+    def __init__(self, in_channels=1, initial_filters=64): # Reduced initial_filters
         super(SimplifiedFeatureExtractionBranch, self).__init__()
         self.conv_blocks = nn.Sequential(
             # Block 1
             nn.Conv2d(in_channels, initial_filters, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(initial_filters),
-            nn.ReLU(),
+            nn.LeakyReLU(0.01),
             nn.MaxPool2d(kernel_size=2, stride=2), # Output size: 128x128
 
             # Block 2
             nn.Conv2d(initial_filters, initial_filters * 2, kernel_size=3, stride=1, padding=1),
             nn.BatchNorm2d(initial_filters * 2),
-            nn.ReLU(),
+            nn.LeakyReLU(0.01),
             nn.MaxPool2d(kernel_size=2, stride=2), # Output size: 64x64
 
             # Block 3 - Removed one block compared to previous version
             nn.Conv2d(initial_filters * 2, initial_filters * 4, kernel_size=3, stride=1, padding=1), # Max 64 filters
             nn.BatchNorm2d(initial_filters * 4),
-            nn.ReLU(),
+            nn.LeakyReLU(0.01),
             nn.MaxPool2d(kernel_size=2, stride=2), # Output size: 32x32
 
             # Potentially add one more if 3 blocks are too shallow for your features
-            # nn.Conv2d(initial_filters * 4, initial_filters * 8, kernel_size=3, stride=1, padding=1), # Max 128 filters
-            # nn.BatchNorm2d(initial_filters * 8),
-            # nn.ReLU(),
-            # nn.MaxPool2d(kernel_size=2, stride=2) # Output size: 16x16
+            nn.Conv2d(initial_filters * 4, initial_filters * 8, kernel_size=3, stride=1, padding=1), # Max 128 filters
+            nn.BatchNorm2d(initial_filters * 8),
+            nn.LeakyReLU(0.01),
+            nn.MaxPool2d(kernel_size=2, stride=2) # Output size: 16x16
         )
 
     def forward(self, x):
@@ -41,7 +41,7 @@ class SimplifiedRegressionHead(nn.Module):
             nn.Flatten(),
             nn.Linear(input_feature_size, 128), # Reduced from 512
             nn.BatchNorm1d(128),
-            nn.ReLU(),
+            nn.LeakyReLU(0.01),
             nn.Dropout(0.3), # Slightly reduced dropout, you can experiment
 
             nn.Linear(128, 1), # Only one hidden FC layer

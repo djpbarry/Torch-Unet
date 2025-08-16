@@ -3,8 +3,7 @@ import csv
 import datetime
 import os
 import re  # Import regex for pattern matching
-from datetime import datetime
-import random
+
 import imageio.v3 as iio
 import matplotlib.pyplot as plt
 import numpy as np
@@ -14,6 +13,8 @@ from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
 from regression_model import *
+
+# from datetime import datetime
 
 TARGET_IMAGE_SIZE = (256, 256)
 
@@ -237,7 +238,7 @@ def val_test_transforms_fn(mixed_np, source_np, scalar_label):
 
 # --- End of Transform Functions ---
 
-def train_model(model, train_loader, val_loader, criterion, optimizer, num_epochs, device):
+def train_model(model, train_loader, val_loader, criterion, optimizer, num_epochs, device, output_dir):
     train_losses = []
     val_losses = []
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
@@ -245,7 +246,8 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
     model.to(device)
 
     # Create the timestamped log filename
-    timestamped_log_file = f"training_log_{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}_{batch_size}_{learning_rate}.csv"
+    timestamped_log_file = os.path.join(output_dir,
+                                        f"training_log_{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}_{batch_size}_{learning_rate}.csv")
 
     # Prepare the CSV log file
     with open(timestamped_log_file, mode='w', newline='') as f:
@@ -332,6 +334,20 @@ if __name__ == "__main__":
 
     model = AdvancedRegressionModel(initial_filters=128, num_conv_blocks=6)
     print(f'Using {ncpus} cpu workers.')
+
+    # --- Create a unique output directory for this run ---
+    current_time_str = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    # Include batch size and learning rate in the folder name for easy identification
+    output_dir_name = f"training_run_{current_time_str}_B{batch_size}_LR{learning_rate}"
+    os.makedirs(output_dir_name, exist_ok=True)
+    print(f"Saving all outputs to: {output_dir_name}")
+
+    # --- Save Model Architecture Summary ---
+    model_summary_path = os.path.join(output_dir_name, "model_architecture.txt")
+    with open(model_summary_path, "w") as f:
+        f.write(str(model))  # This prints the __repr__ of the model
+    print(f"Model architecture summary saved to {model_summary_path}")
+
     print("\nCreating dataset instances for initial file listing...")
     try:
         # No label_mapping_file needed, as labels are derived from filenames
@@ -412,11 +428,12 @@ if __name__ == "__main__":
 
     print("\nStarting training with validation...")
     train_losses, val_losses = train_model(model, train_dataloader, val_dataloader, criterion, optimizer, num_epochs,
-                                           device)
+                                           device, output_dir_name)
 
     print("Training finished!")
     current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    model_save_path = f"crosstalk_regression_model_trained_{current_time}_{batch_size}_{learning_rate}.pth"
+    model_save_path = os.path.join(output_dir_name,
+                                   f"crosstalk_regression_model_trained_{current_time}_{batch_size}_{learning_rate}.pth")
     torch.save(model.state_dict(), model_save_path)
     print(f"Trained model weights saved to {model_save_path}")
 
@@ -430,7 +447,8 @@ if __name__ == "__main__":
     plt.title("Training and Validation Loss Over Epochs")
     plt.legend()
     plt.grid(True)
-    loss_plot_path = f"training_validation_loss_{current_time}_{batch_size}_{learning_rate}.png"
+    loss_plot_path = os.path.join(output_dir_name,
+                                  f"training_validation_loss_{current_time}_{batch_size}_{learning_rate}.png")
     plt.savefig(loss_plot_path)
     print(f"Training and validation loss plot saved to {loss_plot_path}")
     plt.close()  # Close the plot to free memory
@@ -472,7 +490,7 @@ if __name__ == "__main__":
     print("Test set evaluation complete.")
 
     # --- Save predictions to CSV ---
-    output_csv_path = f"test_predictions_{current_time}_{batch_size}_{learning_rate}.csv"
+    output_csv_path = os.path.join(output_dir_name, f"test_predictions_{current_time}_{batch_size}_{learning_rate}.csv")
     with open(output_csv_path, mode='w', newline='') as csv_file:
         # Use a regular csv.writer to write the parameters first
         writer = csv.writer(csv_file)
@@ -501,7 +519,8 @@ if __name__ == "__main__":
     plt.ylabel("Predicted Label")
     plt.title("Test Set: Actual vs. Predicted Labels")
     plt.legend()
-    test_plot_path = f"test_predictions_plot_{current_time}_{batch_size}_{learning_rate}.png"
+    test_plot_path = os.path.join(output_dir_name,
+                                  f"test_predictions_plot_{current_time}_{batch_size}_{learning_rate}.png")
     plt.savefig(test_plot_path)
     print(f"Test predictions plot saved to {test_plot_path}")
     plt.close()  # Close the plot to free memory
@@ -539,7 +558,8 @@ if __name__ == "__main__":
     plt.ylabel("Predicted Label")
     plt.title("Train Set: Actual vs. Predicted Labels")
     plt.legend()
-    test_plot_path = f"train_predictions_plot_{current_time}_{batch_size}_{learning_rate}.png"
+    test_plot_path = os.path.join(output_dir_name,
+                                  f"train_predictions_plot_{current_time}_{batch_size}_{learning_rate}.png")
     plt.savefig(test_plot_path)
     print(f"Train predictions plot saved to {test_plot_path}")
     plt.close()  # Close the plot to free memory
@@ -577,7 +597,8 @@ if __name__ == "__main__":
     plt.ylabel("Predicted Label")
     plt.title("Val Set: Actual vs. Predicted Labels")
     plt.legend()
-    test_plot_path = f"val_predictions_plot_{current_time}_{batch_size}_{learning_rate}.png"
+    test_plot_path = os.path.join(output_dir_name,
+                                  f"val_predictions_plot_{current_time}_{batch_size}_{learning_rate}.png")
     plt.savefig(test_plot_path)
     print(f"Val predictions plot saved to {test_plot_path}")
     plt.close()  # Close the plot to free memory
