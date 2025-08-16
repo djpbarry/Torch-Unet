@@ -336,7 +336,7 @@ if __name__ == "__main__":
     print(f'Using {ncpus} cpu workers.')
 
     # --- Create a unique output directory for this run ---
-    current_time_str = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    current_time_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     # Include batch size and learning rate in the folder name for easy identification
     output_dir_name = f"training_run_{current_time_str}_B{batch_size}_LR{learning_rate}"
     os.makedirs(output_dir_name, exist_ok=True)
