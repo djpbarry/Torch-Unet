@@ -39,10 +39,15 @@ class SimplifiedRegressionHead(nn.Module):
         super(SimplifiedRegressionHead, self).__init__()
         self.fc_layers = nn.Sequential(
             nn.Flatten(),
-            nn.Linear(input_feature_size, 128), # Reduced from 512
+            nn.Linear(input_feature_size, 512),  # Reduced from 512
+            nn.BatchNorm1d(512),
+            nn.LeakyReLU(0.01),
+            nn.Dropout(0.4),  # Slightly reduced dropout, you can experiment
+
+            nn.Linear(512, 128), # Reduced from 512
             nn.BatchNorm1d(128),
             nn.LeakyReLU(0.01),
-            nn.Dropout(0.3), # Slightly reduced dropout, you can experiment
+            nn.Dropout(0.4), # Slightly reduced dropout, you can experiment
 
             nn.Linear(128, 1), # Only one hidden FC layer
             nn.Sigmoid() # Keep Sigmoid if alpha is strictly [0,1]
@@ -92,4 +97,4 @@ class SimplifiedTwoBranchRegressionModel(nn.Module):
 
         # Pass through the regression head
         output = self.regression_head(fused_features)
-        return output
+        return output * 0.5
