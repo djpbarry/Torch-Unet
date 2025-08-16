@@ -4,6 +4,7 @@ import datetime
 import os
 import re  # Import regex for pattern matching
 from datetime import datetime
+
 import imageio.v3 as iio
 import matplotlib.pyplot as plt
 import numpy as np
@@ -17,6 +18,75 @@ from two_branch_regression import *
 # from datetime import datetime
 
 TARGET_IMAGE_SIZE = (256, 256)
+
+
+def evaluate_and_save(model, dataloader, dataset_name, output_dir):
+    """
+    Evaluates the model, saves predictions to a CSV, and plots the results.
+
+    Args:
+        model (torch.nn.Module): The PyTorch model to evaluate.
+        dataloader (torch.utils.data.DataLoader): The data loader for the dataset.
+        dataset_name (str): The name of the dataset (e.g., 'test', 'train', 'val').
+        output_dir (str): The directory to save output files.
+    """
+    print(f"\n--- Evaluating Model on {dataset_name.capitalize()} Set ---")
+
+    predictions_data = []
+    running_loss = 0.0
+
+    with torch.no_grad():
+        for i, (inputs, labels) in enumerate(tqdm(dataloader, desc=f"{dataset_name.capitalize()} Set Evaluation")):
+            inputs = inputs.to(device)
+            labels = labels.to(device)
+
+            outputs = model(inputs)
+            loss = criterion(outputs, labels)
+            running_loss += loss.item() * inputs.size(0)
+
+            actual_labels = labels.cpu().numpy().flatten()
+            predicted_labels = outputs.cpu().numpy().flatten()
+
+            for j in range(len(actual_labels)):
+                predictions_data.append({
+                    'Actual_Label': actual_labels[j],
+                    'Predicted_Label': predicted_labels[j]
+                })
+
+    final_loss = running_loss / len(dataloader.dataset)
+    print(f"Final {dataset_name.capitalize()} Loss: {final_loss:.6f}")
+
+    # --- Save predictions to CSV ---
+    output_csv_path = os.path.join(output_dir,
+                                   f"{dataset_name}_predictions_{current_time}_{batch_size}_{learning_rate}.csv")
+    with open(output_csv_path, mode='w', newline='') as csv_file:
+        writer = csv.writer(csv_file)
+        fieldnames = ['Actual_Label', 'Predicted_Label']
+        dict_writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+        dict_writer.writeheader()
+        dict_writer.writerows(predictions_data)
+
+    print(f"{dataset_name.capitalize()} predictions saved to {output_csv_path}")
+
+    # --- Plot Results ---
+    if predictions_data:
+        actual_labels_all = [d['Actual_Label'] for d in predictions_data]
+        predicted_labels_all = [d['Predicted_Label'] for d in predictions_data]
+
+        plt.figure(figsize=(8, 8))
+        plt.scatter(actual_labels_all, predicted_labels_all, alpha=0.6, s=10)
+        plt.plot([min(actual_labels_all), max(actual_labels_all)],
+                 [min(actual_labels_all), max(actual_labels_all)],
+                 '--r', label='Ideal Prediction (y=x)')
+        plt.xlabel("Actual Label")
+        plt.ylabel("Predicted Label")
+        plt.title(f"{dataset_name.capitalize()} Set: Actual vs. Predicted Labels")
+        plt.legend()
+        plot_path = os.path.join(output_dir,
+                                 f"{dataset_name}_predictions_plot_{current_time}_{batch_size}_{learning_rate}.png")
+        plt.savefig(plot_path)
+        print(f"{dataset_name.capitalize()} predictions plot saved to {plot_path}")
+        plt.close()
 
 
 # --- Custom Dataset Classes (MODIFIED to use (image_id, alpha_value) as key) ---
@@ -342,6 +412,14 @@ if __name__ == "__main__":
     os.makedirs(output_dir_name, exist_ok=True)
     print(f"Saving all outputs to: {output_dir_name}")
 
+    args_dict = vars(args)
+    params_list_path = os.path.join(output_dir_name, "params.txt")
+    with open(params_list_path, 'w') as f:
+        for arg, value in args_dict.items():
+            f.write(f'{arg}: {value}\n')
+
+    print(f"Parameters saved to {params_list_path}")
+
     # --- Save Model Architecture Summary ---
     model_summary_path = os.path.join(output_dir_name, "model_architecture.txt")
     with open(model_summary_path, "w") as f:
@@ -453,152 +531,12 @@ if __name__ == "__main__":
     print(f"Training and validation loss plot saved to {loss_plot_path}")
     plt.close()  # Close the plot to free memory
 
-    print("\n--- Evaluating Model on Test Set ---")
+    print("\n--- Evaluating Model ---")
     loaded_model = SimplifiedTwoBranchRegressionModel(initial_filters_per_branch=64)
     loaded_model.load_state_dict(torch.load(model_save_path, map_location=device))
     loaded_model.eval()
     loaded_model.to(device)
 
-    test_running_loss = 0.0
-    # List to store actual vs. predicted values
-    predictions_data = []
-
-    with torch.no_grad():
-        for i, (inputs, labels) in enumerate(tqdm(test_dataloader, desc="Test Set Evaluation")):
-            inputs = inputs.to(device)
-            labels = labels.to(device)  # Shape: (batch_size, 1)
-
-            outputs = loaded_model(inputs)  # Shape: (batch_size, 1)
-
-            loss = criterion(outputs, labels)
-            test_running_loss += loss.item() * inputs.size(0)
-
-            # Store actual and predicted values
-            # Move tensors to CPU and convert to numpy arrays, then flatten to 1D list
-            actual_labels = labels.cpu().numpy().flatten()
-            predicted_labels = outputs.cpu().numpy().flatten()
-
-            # For each sample in the current batch, append its actual and predicted value
-            for j in range(len(actual_labels)):
-                predictions_data.append({
-                    'Actual_Label': actual_labels[j],
-                    'Predicted_Label': predicted_labels[j]
-                })
-
-    final_test_loss = test_running_loss / len(test_dataloader.dataset)
-    print(f"\nFinal Test Loss: {final_test_loss:.6f}")
-    print("Test set evaluation complete.")
-
-    # --- Save predictions to CSV ---
-    output_csv_path = os.path.join(output_dir_name, f"test_predictions_{current_time}_{batch_size}_{learning_rate}.csv")
-    with open(output_csv_path, mode='w', newline='') as csv_file:
-        # Use a regular csv.writer to write the parameters first
-        writer = csv.writer(csv_file)
-        writer.writerow(['Learning Rate', learning_rate])
-        writer.writerow(['Batch Size', batch_size])
-
-        # Then, define the fieldnames for the DictWriter
-        fieldnames = ['Actual_Label', 'Predicted_Label']
-        dict_writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
-
-        dict_writer.writeheader()
-        dict_writer.writerows(predictions_data)
-
-    print(f"Test predictions saved to {output_csv_path}")
-
-    # --- Plot Test Results (Actual vs. Predicted) ---
-    actual_labels_all = [d['Actual_Label'] for d in predictions_data]
-    predicted_labels_all = [d['Predicted_Label'] for d in predictions_data]
-
-    plt.figure(figsize=(8, 8))
-    plt.scatter(actual_labels_all, predicted_labels_all, alpha=0.6, s=10)
-    plt.plot([min(actual_labels_all), max(actual_labels_all)],
-             [min(actual_labels_all), max(actual_labels_all)],
-             '--r', label='Ideal Prediction (y=x)')  # Plot a y=x line
-    plt.xlabel("Actual Label")
-    plt.ylabel("Predicted Label")
-    plt.title("Test Set: Actual vs. Predicted Labels")
-    plt.legend()
-    test_plot_path = os.path.join(output_dir_name,
-                                  f"test_predictions_plot_{current_time}_{batch_size}_{learning_rate}.png")
-    plt.savefig(test_plot_path)
-    print(f"Test predictions plot saved to {test_plot_path}")
-    plt.close()  # Close the plot to free memory
-
-    train_predictions_data = []
-
-    with torch.no_grad():
-        for i, (inputs, labels) in enumerate(tqdm(train_dataloader, desc="Train Set Evaluation")):
-            inputs = inputs.to(device)
-            labels = labels.to(device)  # Shape: (batch_size, 1)
-
-            outputs = loaded_model(inputs)  # Shape: (batch_size, 1)
-
-            # Store actual and predicted values
-            # Move tensors to CPU and convert to numpy arrays, then flatten to 1D list
-            actual_labels = labels.cpu().numpy().flatten()
-            predicted_labels = outputs.cpu().numpy().flatten()
-
-            # For each sample in the current batch, append its actual and predicted value
-            for j in range(len(actual_labels)):
-                train_predictions_data.append({
-                    'Actual_Label': actual_labels[j],
-                    'Predicted_Label': predicted_labels[j]
-                })
-
-    actual_labels_all = [d['Actual_Label'] for d in train_predictions_data]
-    predicted_labels_all = [d['Predicted_Label'] for d in train_predictions_data]
-
-    plt.figure(figsize=(8, 8))
-    plt.scatter(actual_labels_all, predicted_labels_all, alpha=0.6, s=10)
-    plt.plot([min(actual_labels_all), max(actual_labels_all)],
-             [min(actual_labels_all), max(actual_labels_all)],
-             '--r', label='Ideal Prediction (y=x)')  # Plot a y=x line
-    plt.xlabel("Actual Label")
-    plt.ylabel("Predicted Label")
-    plt.title("Train Set: Actual vs. Predicted Labels")
-    plt.legend()
-    test_plot_path = os.path.join(output_dir_name,
-                                  f"train_predictions_plot_{current_time}_{batch_size}_{learning_rate}.png")
-    plt.savefig(test_plot_path)
-    print(f"Train predictions plot saved to {test_plot_path}")
-    plt.close()  # Close the plot to free memory
-
-    val_predictions_data = []
-
-    with torch.no_grad():
-        for i, (inputs, labels) in enumerate(tqdm(val_dataloader, desc="Val Set Evaluation")):
-            inputs = inputs.to(device)
-            labels = labels.to(device)  # Shape: (batch_size, 1)
-
-            outputs = loaded_model(inputs)  # Shape: (batch_size, 1)
-
-            # Store actual and predicted values
-            # Move tensors to CPU and convert to numpy arrays, then flatten to 1D list
-            actual_labels = labels.cpu().numpy().flatten()
-            predicted_labels = outputs.cpu().numpy().flatten()
-
-            # For each sample in the current batch, append its actual and predicted value
-            for j in range(len(actual_labels)):
-                val_predictions_data.append({
-                    'Actual_Label': actual_labels[j],
-                    'Predicted_Label': predicted_labels[j]
-                })
-
-    actual_labels_all = [d['Actual_Label'] for d in val_predictions_data]
-    predicted_labels_all = [d['Predicted_Label'] for d in val_predictions_data]
-
-    plt.figure(figsize=(8, 8))
-    plt.scatter(actual_labels_all, predicted_labels_all, alpha=0.6, s=10)
-    plt.plot([min(actual_labels_all), max(actual_labels_all)],
-             [min(actual_labels_all), max(actual_labels_all)],
-             '--r', label='Ideal Prediction (y=x)')  # Plot a y=x line
-    plt.xlabel("Actual Label")
-    plt.ylabel("Predicted Label")
-    plt.title("Val Set: Actual vs. Predicted Labels")
-    plt.legend()
-    test_plot_path = os.path.join(output_dir_name,
-                                  f"val_predictions_plot_{current_time}_{batch_size}_{learning_rate}.png")
-    plt.savefig(test_plot_path)
-    print(f"Val predictions plot saved to {test_plot_path}")
-    plt.close()  # Close the plot to free memory
+    evaluate_and_save(loaded_model, test_dataloader, 'test', output_dir_name)
+    evaluate_and_save(loaded_model, train_dataloader, 'train', output_dir_name)
+    evaluate_and_save(loaded_model, val_dataloader, 'val', output_dir_name)
