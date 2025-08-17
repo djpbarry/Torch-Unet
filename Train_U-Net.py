@@ -307,29 +307,102 @@ def val_test_transforms_fn(mixed_np, source_np, scalar_label):
 
 # --- End of Transform Functions ---
 
+# Replace your existing train_model function with this enhanced version
+
 def train_model(model, train_loader, val_loader, criterion, optimizer, num_epochs, device, output_dir):
+    """Enhanced training function with comprehensive scheduler support"""
+
+    # Choose your scheduler configuration
+    scheduler_configs = {
+        'aggressive_plateau': {
+            'type': 'plateau',
+            'params': {
+                'factor': 0.3,
+                'patience': 3,
+                'threshold': 5e-5,
+                'min_lr': 1e-8,
+                'verbose': True
+            },
+            'early_stop_patience': 12
+        },
+
+        'onecycle': {
+            'type': 'onecycle',
+            'params': {
+                'max_lr': 1e-3,  # Start with 2x your current LR
+                'pct_start': 0.3,
+                'anneal_strategy': 'cos',
+                'div_factor': 25.0,
+                'final_div_factor': 1e4,
+                'epochs': num_epochs,
+                'steps_per_epoch': len(train_loader)
+            },
+            'early_stop_patience': 20
+        },
+
+        'cosine_warmup': {
+            'type': 'custom_warmup',
+            'params': {
+                'warmup_epochs': 5,
+                'max_lr': 1e-4,
+                'final_lr': 1e-7,
+                'total_epochs': num_epochs
+            },
+            'early_stop_patience': 15
+        }
+    }
+
+    # Choose which scheduler to use - EXPERIMENT WITH THESE!
+    scheduler_config = scheduler_configs['onecycle']  # Try 'onecycle' or 'cosine_warmup'
+
     train_losses = []
     val_losses = []
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
+    lr_history = []
+
+    # Create scheduler based on type
+    if scheduler_config['type'] == 'plateau':
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, **scheduler_config['params']
+        )
+    elif scheduler_config['type'] == 'onecycle':
+        scheduler = torch.optim.lr_scheduler.OneCycleLR(
+            optimizer, **scheduler_config['params']
+        )
+    elif scheduler_config['type'] == 'cosine':
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=num_epochs, eta_min=1e-8
+        )
+    elif scheduler_config['type'] == 'custom_warmup':
+        scheduler = CustomWarmupScheduler(optimizer, **scheduler_config['params'])
 
     model.to(device)
+    best_val_loss = float('inf')
+    epochs_without_improvement = 0
+    early_stop_patience = scheduler_config.get('early_stop_patience', 15)
 
-    # Create the timestamped log filename
+    # Create the timestamped log filename with scheduler info
     timestamped_log_file = os.path.join(output_dir,
-                                        f"training_log_{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}_{batch_size}_{learning_rate}.csv")
+                                        f"training_log_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}_{batch_size}_{learning_rate}_{scheduler_config['type']}.csv")
 
     # Prepare the CSV log file
     with open(timestamped_log_file, mode='w', newline='') as f:
         writer = csv.writer(f)
         writer.writerow(['Learning Rate', learning_rate])
         writer.writerow(['Batch Size', batch_size])
-        writer.writerow(['epoch', 'train_loss', 'val_loss'])  # write header
+        writer.writerow(['Scheduler Type', scheduler_config['type']])
+        writer.writerow(['Scheduler Params', str(scheduler_config['params'])])
+        writer.writerow(['epoch', 'train_loss', 'val_loss', 'learning_rate'])  # write header
 
         for epoch in range(num_epochs):
             model.train()
             train_loss = 0.0
 
-            for inputs, targets in tqdm(train_loader, desc=f"Epoch {epoch + 1}/{num_epochs} [Train]"):
+            # Get current learning rate
+            current_lr = optimizer.param_groups[0]['lr']
+            lr_history.append(current_lr)
+
+            for batch_idx, (inputs, targets) in enumerate(
+                    tqdm(train_loader, desc=f"Epoch {epoch + 1}/{num_epochs} [Train]")):
                 inputs, targets = inputs.to(device), targets.to(device)
 
                 optimizer.zero_grad()
@@ -339,6 +412,10 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
                 optimizer.step()
 
                 train_loss += loss.item() * inputs.size(0)
+
+                # Step OneCycleLR after each batch
+                if scheduler_config['type'] == 'onecycle':
+                    scheduler.step()
 
             train_loss /= len(train_loader.dataset)
             train_losses.append(train_loss)
@@ -355,17 +432,83 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
 
             val_loss /= len(val_loader.dataset)
             val_losses.append(val_loss)
-            scheduler.step(val_loss)
 
-            print(f"Epoch [{epoch + 1}/{num_epochs}] | Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}")
+            # Step scheduler (except OneCycleLR which steps per batch)
+            if scheduler_config['type'] == 'plateau':
+                scheduler.step(val_loss)
+            elif scheduler_config['type'] in ['cosine', 'custom_warmup']:
+                scheduler.step()
+            # OneCycleLR already stepped in training loop
+
+            # Early stopping and best model saving
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                epochs_without_improvement = 0
+                # Save best model
+                best_model_path = os.path.join(output_dir, f"best_model_{scheduler_config['type']}.pth")
+                torch.save(model.state_dict(), best_model_path)
+            else:
+                epochs_without_improvement += 1
+
+            current_lr = optimizer.param_groups[0]['lr']
+            print(
+                f"Epoch [{epoch + 1}/{num_epochs}] | Train Loss: {train_loss:.6f} | Val Loss: {val_loss:.6f} | LR: {current_lr:.2e}")
 
             # Log to CSV
-            writer.writerow([epoch + 1, train_loss, val_loss])
+            writer.writerow([epoch + 1, train_loss, val_loss, current_lr])
+
+            # Early stopping
+            if epochs_without_improvement >= early_stop_patience:
+                print(
+                    f"Early stopping triggered after {epoch + 1} epochs (no improvement for {early_stop_patience} epochs)")
+                break
+
+    # Plot learning rate schedule
+    plt.figure(figsize=(10, 6))
+    plt.plot(lr_history)
+    plt.xlabel('Epoch')
+    plt.ylabel('Learning Rate')
+    plt.title(f'Learning Rate Schedule ({scheduler_config["type"]})')
+    plt.yscale('log')
+    plt.grid(True)
+    lr_plot_path = os.path.join(output_dir, f"lr_schedule_{scheduler_config['type']}.png")
+    plt.savefig(lr_plot_path)
+    plt.close()
+    print(f"Learning rate schedule plot saved to {lr_plot_path}")
 
     return train_losses, val_losses
 
 
-# --- End of Training Function ---
+# Custom Warmup Scheduler Class (add this to your script)
+class CustomWarmupScheduler:
+    """Custom scheduler with warmup and decay phases"""
+
+    def __init__(self, optimizer, warmup_epochs, max_lr, final_lr, total_epochs):
+        self.optimizer = optimizer
+        self.warmup_epochs = warmup_epochs
+        self.max_lr = max_lr
+        self.final_lr = final_lr
+        self.total_epochs = total_epochs
+        self.current_epoch = 0
+
+        # Set initial LR to a small value
+        for param_group in self.optimizer.param_groups:
+            param_group['lr'] = self.final_lr
+
+    def step(self):
+        """Update learning rate based on current epoch"""
+        if self.current_epoch < self.warmup_epochs:
+            # Warmup phase: linear increase
+            lr = self.final_lr + (self.max_lr - self.final_lr) * (self.current_epoch / self.warmup_epochs)
+        else:
+            # Decay phase: cosine annealing
+            progress = (self.current_epoch - self.warmup_epochs) / (self.total_epochs - self.warmup_epochs)
+            lr = self.final_lr + (self.max_lr - self.final_lr) * 0.5 * (1 + np.cos(np.pi * progress))
+
+        for param_group in self.optimizer.param_groups:
+            param_group['lr'] = lr
+
+        self.current_epoch += 1
 
 
 if __name__ == "__main__":
@@ -506,7 +649,7 @@ if __name__ == "__main__":
 
     print("Dataloaders created for training, validation, and testing.")
 
-    criterion = torch.nn.MSELoss()
+    criterion = torch.nn.SmoothL1Loss()
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-3)
 
     print("\nStarting training with validation...")
