@@ -353,7 +353,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
     }
 
     # Choose which scheduler to use - EXPERIMENT WITH THESE!
-    scheduler_config = scheduler_configs['onecycle']  # Try 'onecycle' or 'cosine_warmup'
+    scheduler_config = scheduler_configs['plateau']  # Try 'onecycle' or 'cosine_warmup'
 
     train_losses = []
     val_losses = []
@@ -372,8 +372,6 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer, T_max=num_epochs, eta_min=1e-8
         )
-    elif scheduler_config['type'] == 'custom_warmup':
-        scheduler = CustomWarmupScheduler(optimizer, **scheduler_config['params'])
 
     model.to(device)
     best_val_loss = float('inf')
@@ -477,38 +475,6 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
     print(f"Learning rate schedule plot saved to {lr_plot_path}")
 
     return train_losses, val_losses
-
-
-# Custom Warmup Scheduler Class (add this to your script)
-class CustomWarmupScheduler:
-    """Custom scheduler with warmup and decay phases"""
-
-    def __init__(self, optimizer, warmup_epochs, max_lr, final_lr, total_epochs):
-        self.optimizer = optimizer
-        self.warmup_epochs = warmup_epochs
-        self.max_lr = max_lr
-        self.final_lr = final_lr
-        self.total_epochs = total_epochs
-        self.current_epoch = 0
-
-        # Set initial LR to a small value
-        for param_group in self.optimizer.param_groups:
-            param_group['lr'] = self.final_lr
-
-    def step(self):
-        """Update learning rate based on current epoch"""
-        if self.current_epoch < self.warmup_epochs:
-            # Warmup phase: linear increase
-            lr = self.final_lr + (self.max_lr - self.final_lr) * (self.current_epoch / self.warmup_epochs)
-        else:
-            # Decay phase: cosine annealing
-            progress = (self.current_epoch - self.warmup_epochs) / (self.total_epochs - self.warmup_epochs)
-            lr = self.final_lr + (self.max_lr - self.final_lr) * 0.5 * (1 + np.cos(np.pi * progress))
-
-        for param_group in self.optimizer.param_groups:
-            param_group['lr'] = lr
-
-        self.current_epoch += 1
 
 
 if __name__ == "__main__":
@@ -665,8 +631,8 @@ if __name__ == "__main__":
 
     # --- Plot Training and Validation Losses ---
     plt.figure(figsize=(10, 6))
-    plt.plot(range(1, num_epochs + 1), train_losses, label="Train Loss")
-    plt.plot(range(1, num_epochs + 1), val_losses, label="Val Loss")
+    plt.plot(range(1, len(train_losses) + 1), train_losses, label="Train Loss")
+    plt.plot(range(1, len(train_losses) + 1), val_losses, label="Val Loss")
     plt.xlabel("Epoch")
     plt.ylabel("Loss")
     plt.ylim(bottom=0, top=0.02)
