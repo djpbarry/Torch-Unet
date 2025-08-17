@@ -320,8 +320,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
                 'factor': 0.3,
                 'patience': 3,
                 'threshold': 5e-5,
-                'min_lr': 1e-8,
-                'verbose': True
+                'min_lr': 1e-8
             },
             'early_stop_patience': 12
         },
