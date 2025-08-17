@@ -353,7 +353,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
     }
 
     # Choose which scheduler to use - EXPERIMENT WITH THESE!
-    scheduler_config = scheduler_configs['plateau']  # Try 'onecycle' or 'cosine_warmup'
+    scheduler_config = scheduler_configs['aggressive_plateau']  # Try 'onecycle' or 'cosine_warmup'
 
     train_losses = []
     val_losses = []
