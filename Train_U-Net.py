@@ -309,7 +309,8 @@ def val_test_transforms_fn(mixed_np, source_np, scalar_label):
 
 # Replace your existing train_model function with this enhanced version
 
-def train_model(model, train_loader, val_loader, criterion, optimizer, num_epochs, device, output_dir):
+def train_model(model, train_loader, val_loader, criterion, optimizer, num_epochs, device, output_dir,
+                learning_scheduler):
     """Enhanced training function with comprehensive scheduler support"""
 
     # Choose your scheduler configuration
@@ -352,7 +353,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
     }
 
     # Choose which scheduler to use - EXPERIMENT WITH THESE!
-    scheduler_config = scheduler_configs['aggressive_plateau']  # Try 'onecycle' or 'cosine_warmup'
+    scheduler_config = scheduler_configs[learning_scheduler]  # Try 'onecycle' or 'cosine_warmup'
 
     train_losses = []
     val_losses = []
@@ -493,6 +494,9 @@ if __name__ == "__main__":
     parser.add_argument("-j", "--cpu_jobs", type=int, default=1, help="Number of CPUs to use")
     parser.add_argument("-o", "--model_options", type=str, default='single', help="Use single- or double-branch model",
                         choices=['single', 'double'])
+    parser.add_argument("-r", "--learning_scheduler", type=str, default='aggressive_plateau',
+                        help="Use aggressive_plateau, onecycle or cosine_warmup learning scheduler",
+                        choices=['aggressive_plateau', 'onecycle', 'cosine_warmup'])
 
     args = parser.parse_args()
 
@@ -505,6 +509,7 @@ if __name__ == "__main__":
     val_ratio = args.val_ratio
     ncpus = args.cpu_jobs
     model_selection = args.model_options
+    learning_scheduler = args.learning_scheduler
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
@@ -619,7 +624,7 @@ if __name__ == "__main__":
 
     print("\nStarting training with validation...")
     train_losses, val_losses = train_model(model, train_dataloader, val_dataloader, criterion, optimizer, num_epochs,
-                                           device, output_dir_name)
+                                           device, output_dir_name, learning_scheduler)
 
     print("Training finished!")
     current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
