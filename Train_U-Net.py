@@ -407,6 +407,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
                 outputs = model(inputs)
                 loss = criterion(outputs, targets)
                 loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
                 optimizer.step()
 
                 train_loss += loss.item() * inputs.size(0)
@@ -619,8 +620,8 @@ if __name__ == "__main__":
 
     print("Dataloaders created for training, validation, and testing.")
 
-    criterion = torch.nn.SmoothL1Loss()
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-3)
+    criterion = torch.nn.MSELoss()
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-4)
 
     print("\nStarting training with validation...")
     train_losses, val_losses = train_model(model, train_dataloader, val_dataloader, criterion, optimizer, num_epochs,
