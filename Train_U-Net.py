@@ -19,6 +19,11 @@ from two_branch_regression import *
 TARGET_IMAGE_SIZE = (256, 256)
 
 
+def l2_regularization(model, lambda_l2=1e-5):
+    l2_norm = sum(p.pow(2.0).sum() for p in model.parameters())
+    return lambda_l2 * l2_norm
+
+
 def evaluate_and_save(model, dataloader, dataset_name, output_dir):
     """
     Evaluates the model, saves predictions to a CSV, and plots the results.
@@ -205,9 +210,15 @@ class SplitCrosstalkDataset(Dataset):
 
 
 def train_transforms_fn(mixed_np, source_np, scalar_label):
-    # Convert numpy arrays to PyTorch tensors and add channel dimension
-    # Ensure pixel values are normalized to [0, 1] if not already.
-    # IMPORTANT: Apply normalization here by dividing by 255.0 (or max pixel value)
+    def normalize_image(img):
+        img_min, img_max = img.min(), img.max()
+        if img_max > img_min:  # Avoid division by zero
+            return (img - img_min) / (img_max - img_min)
+        else:
+            return img
+
+    mixed_np = normalize_image(mixed_np)
+    source_np = normalize_image(source_np)
     mixed_tensor = torch.from_numpy(mixed_np).unsqueeze(0)
     source_tensor = torch.from_numpy(source_np).unsqueeze(0)
     label_tensor = torch.tensor(scalar_label, dtype=torch.float32).unsqueeze(0)
@@ -323,7 +334,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
                 'threshold': 5e-5,
                 'min_lr': 1e-8
             },
-            'early_stop_patience': 12
+            'early_stop_patience': 8
         },
 
         'onecycle': {
@@ -405,7 +416,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
 
                 optimizer.zero_grad()
                 outputs = model(inputs)
-                loss = criterion(outputs, targets)
+                loss = criterion(outputs, targets) + l2_regularization(model)
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
                 optimizer.step()
