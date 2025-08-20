@@ -208,15 +208,15 @@ class SplitCrosstalkDataset(Dataset):
 
 # --- End of Custom Dataset Classes ---
 
+def normalize_image(img):
+    img_min, img_max = img.min(), img.max()
+    if img_max > img_min:  # Avoid division by zero
+        return (img - img_min) / (img_max - img_min)
+    else:
+        return img
+
 
 def train_transforms_fn(mixed_np, source_np, scalar_label):
-    def normalize_image(img):
-        img_min, img_max = img.min(), img.max()
-        if img_max > img_min:  # Avoid division by zero
-            return (img - img_min) / (img_max - img_min)
-        else:
-            return img
-
     mixed_np = normalize_image(mixed_np)
     source_np = normalize_image(source_np)
     mixed_tensor = torch.from_numpy(mixed_np).unsqueeze(0)
@@ -309,6 +309,8 @@ def train_transforms_fn(mixed_np, source_np, scalar_label):
 
 
 def val_test_transforms_fn(mixed_np, source_np, scalar_label):
+    mixed_np = normalize_image(mixed_np)
+    source_np = normalize_image(source_np)
     mixed_tensor = torch.from_numpy(mixed_np).unsqueeze(0)
     source_tensor = torch.from_numpy(source_np).unsqueeze(0)
     label_tensor = torch.tensor(scalar_label, dtype=torch.float32).unsqueeze(0)
