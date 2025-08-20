@@ -418,9 +418,9 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
 
                 optimizer.zero_grad()
                 outputs = model(inputs)
-                loss = criterion(outputs, targets) + l2_regularization(model)
+                loss = criterion(outputs, targets)
                 loss.backward()
-                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
                 optimizer.step()
 
                 train_loss += loss.item() * inputs.size(0)

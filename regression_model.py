@@ -46,7 +46,7 @@ class AdvancedRegressionModel(nn.Module):
             nn.Linear(128, 1),  # Output layer for scalar regression
             # No activation here if your target is unbounded, or Sigmoid for [0,1] range
             # For alpha values (0 to 1), a Sigmoid might be considered, but direct prediction often works.
-            nn.Sigmoid()
+            #nn.Sigmoid()
         )
 
     def _get_conv_output(self, shape):
