@@ -3,6 +3,7 @@ import csv
 import datetime
 import os
 import re  # Import regex for pattern matching
+from datetime import datetime
 
 import imageio.v3 as iio
 import matplotlib.pyplot as plt
@@ -12,7 +13,8 @@ import torchvision.transforms.functional as TF
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
-from kimmel_net import *
+from regression_model import *
+from two_branch_regression import *
 
 TARGET_IMAGE_SIZE = (256, 256)
 
@@ -529,7 +531,32 @@ if __name__ == "__main__":
     if not (abs(train_ratio + val_ratio) < 1.0):
         print("Warning: Sum of TRAIN_RATIO, VAL_RATIO, TEST_RATIO does not equal 1.0.")
 
-    model = RegressionModel()
+    if model_selection == 'double':
+        model = SimplifiedTwoBranchRegressionModel(initial_filters_per_branch=64)
+    else:
+        model = AdvancedRegressionModel(initial_filters=128, num_conv_blocks=6)
+    print(f'Using {ncpus} cpu workers.')
+
+    # --- Create a unique output directory for this run ---
+    current_time_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    # Include batch size and learning rate in the folder name for easy identification
+    output_dir_name = f"training_run_{current_time_str}_B{batch_size}_LR{learning_rate}"
+    os.makedirs(output_dir_name, exist_ok=True)
+    print(f"Saving all outputs to: {output_dir_name}")
+
+    args_dict = vars(args)
+    params_list_path = os.path.join(output_dir_name, "params.txt")
+    with open(params_list_path, 'w') as f:
+        for arg, value in args_dict.items():
+            f.write(f'{arg}: {value}\n')
+
+    print(f"Parameters saved to {params_list_path}")
+
+    # --- Save Model Architecture Summary ---
+    model_summary_path = os.path.join(output_dir_name, "model_architecture.txt")
+    with open(model_summary_path, "w") as f:
+        f.write(str(model))  # This prints the __repr__ of the model
+    print(f"Model architecture summary saved to {model_summary_path}")
 
     print("\nCreating dataset instances for initial file listing...")
     try:
@@ -620,8 +647,27 @@ if __name__ == "__main__":
     torch.save(model.state_dict(), model_save_path)
     print(f"Trained model weights saved to {model_save_path}")
 
-    print("\n--- Evaluating Model on Test Set ---")
-    loaded_model = RegressionModel()
+    # --- Plot Training and Validation Losses ---
+    plt.figure(figsize=(10, 6))
+    plt.plot(range(1, len(train_losses) + 1), train_losses, label="Train Loss")
+    plt.plot(range(1, len(train_losses) + 1), val_losses, label="Val Loss")
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.ylim(bottom=0, top=0.02)
+    plt.title("Training and Validation Loss Over Epochs")
+    plt.legend()
+    plt.grid(True)
+    loss_plot_path = os.path.join(output_dir_name,
+                                  f"training_validation_loss_{current_time}_{batch_size}_{learning_rate}.png")
+    plt.savefig(loss_plot_path)
+    print(f"Training and validation loss plot saved to {loss_plot_path}")
+    plt.close()  # Close the plot to free memory
+
+    print("\n--- Evaluating Model ---")
+    if model_selection == 'double':
+        loaded_model = SimplifiedTwoBranchRegressionModel(initial_filters_per_branch=64)
+    else:
+        loaded_model = AdvancedRegressionModel(initial_filters=128, num_conv_blocks=6)
     loaded_model.load_state_dict(torch.load(model_save_path, map_location=device))
     loaded_model.eval()
     loaded_model.to(device)
