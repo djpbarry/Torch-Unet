@@ -13,7 +13,7 @@ class AdvancedRegressionModel(nn.Module):
         # Initial Convolutional Block
         layers.append(nn.Conv2d(in_c, out_c, kernel_size=3, stride=1, padding=1))
         layers.append(nn.BatchNorm2d(out_c))
-        layers.append(nn.ReLU(inplace=True))
+        layers.append(nn.LeakyReLU(0.01))
         layers.append(nn.MaxPool2d(kernel_size=2, stride=2))  # Halves dimensions
 
         # Subsequent Convolutional Blocks
@@ -22,7 +22,7 @@ class AdvancedRegressionModel(nn.Module):
             out_c = min(out_c * 2, 512)  # Double filters, up to a max (e.g., 512 or 1024)
             layers.append(nn.Conv2d(in_c, out_c, kernel_size=3, stride=1, padding=1))
             layers.append(nn.BatchNorm2d(out_c))
-            layers.append(nn.ReLU(inplace=True))
+            layers.append(nn.LeakyReLU(0.01))
             layers.append(nn.MaxPool2d(kernel_size=2, stride=2))  # Halves dimensions
 
         self.conv_layers = nn.Sequential(*layers)
@@ -35,18 +35,18 @@ class AdvancedRegressionModel(nn.Module):
             nn.Flatten(),
             nn.Linear(conv_output_size, 512),  # First FC layer, larger output
             nn.BatchNorm1d(512),  # BatchNorm for FC layers too
-            nn.ReLU(inplace=True),
-            nn.Dropout(0.5),  # Regularization
+            nn.LeakyReLU(0.01),
+            nn.Dropout(0.1),  # Regularization
 
             nn.Linear(512, 128),  # Second FC layer
             nn.BatchNorm1d(128),
-            nn.ReLU(inplace=True),
-            nn.Dropout(0.5),
+            nn.LeakyReLU(0.01),
+            nn.Dropout(0.1),
 
-            nn.Linear(128, 1)  # Output layer for scalar regression
+            nn.Linear(128, 1),  # Output layer for scalar regression
             # No activation here if your target is unbounded, or Sigmoid for [0,1] range
             # For alpha values (0 to 1), a Sigmoid might be considered, but direct prediction often works.
-            # If Sigmoid is used: nn.Sigmoid()
+            #nn.Sigmoid()
         )
 
     def _get_conv_output(self, shape):

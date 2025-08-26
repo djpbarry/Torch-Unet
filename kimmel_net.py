@@ -9,19 +9,23 @@ class RegressionModel(nn.Module):
         # Define the convolutional layers
         self.conv_layers = nn.Sequential(
             nn.Conv2d(2, 128, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
+            nn.BatchNorm2d(128),  # Added Batch Normalization
+            nn.LeakyReLU(0.01),   # Changed to LeakyReLU
             nn.MaxPool2d(kernel_size=2, stride=2),
 
             nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
+            nn.BatchNorm2d(256),  # Added Batch Normalization
+            nn.LeakyReLU(0.01),   # Changed to LeakyReLU
             nn.MaxPool2d(kernel_size=2, stride=2),
 
             nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
+            nn.BatchNorm2d(256),  # Added Batch Normalization
+            nn.LeakyReLU(0.01),   # Changed to LeakyReLU
             nn.MaxPool2d(kernel_size=2, stride=2),
 
             nn.Conv2d(256, 128, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
+            nn.BatchNorm2d(128),  # Added Batch Normalization
+            nn.LeakyReLU(0.01),   # Changed to LeakyReLU
             nn.MaxPool2d(kernel_size=2, stride=2),
         )
 
@@ -33,12 +37,15 @@ class RegressionModel(nn.Module):
 
         # Define the fully connected layers
         self.fc_layers = nn.Sequential(
-            nn.Dropout(0.3),
-            nn.Linear(conv_output_size, 128),
-            nn.ReLU(),
-            nn.Linear(128, 64),
-            nn.ReLU(),
-            nn.Linear(64, 1)
+            nn.Dropout(0.1),
+            nn.Linear(conv_output_size, 256),  # Increased from 128 to 256
+            nn.BatchNorm1d(256),              # Adjust BatchNorm for new size
+            nn.LeakyReLU(0.01),
+            nn.Linear(256, 128),              # Increased from 64 to 128
+            nn.BatchNorm1d(128),              # Adjust BatchNorm for new size
+            nn.LeakyReLU(0.01),
+            nn.Linear(128, 1),
+            nn.Sigmoid() # Outputs values between 0 and 1
         )
 
     def _get_conv_output(self, shape):
@@ -53,4 +60,4 @@ class RegressionModel(nn.Module):
         x = self.global_pool(x)
         x = torch.flatten(x, 1)  # flatten all but batch dimension
         x = self.fc_layers(x)
-        return torch.clamp(x, 0.0, 1.0)
+        return x * 0.5

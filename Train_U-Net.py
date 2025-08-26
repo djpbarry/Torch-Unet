@@ -1,9 +1,9 @@
 import argparse
 import csv
+import datetime
 import os
-import random
 import re  # Import regex for pattern matching
-import torch
+
 import imageio.v3 as iio
 import matplotlib.pyplot as plt
 import numpy as np
@@ -12,9 +12,83 @@ import torchvision.transforms.functional as TF
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
-from regression_model import AdvancedRegressionModel
+from kimmel_net import *
 
 TARGET_IMAGE_SIZE = (256, 256)
+
+
+def l2_regularization(model, lambda_l2=1e-5):
+    l2_norm = sum(p.pow(2.0).sum() for p in model.parameters())
+    return lambda_l2 * l2_norm
+
+
+def evaluate_and_save(model, dataloader, dataset_name, output_dir):
+    """
+    Evaluates the model, saves predictions to a CSV, and plots the results.
+
+    Args:
+        model (torch.nn.Module): The PyTorch model to evaluate.
+        dataloader (torch.utils.data.DataLoader): The data loader for the dataset.
+        dataset_name (str): The name of the dataset (e.g., 'test', 'train', 'val').
+        output_dir (str): The directory to save output files.
+    """
+    print(f"\n--- Evaluating Model on {dataset_name.capitalize()} Set ---")
+
+    predictions_data = []
+    running_loss = 0.0
+
+    with torch.no_grad():
+        for i, (inputs, labels) in enumerate(tqdm(dataloader, desc=f"{dataset_name.capitalize()} Set Evaluation")):
+            inputs = inputs.to(device)
+            labels = labels.to(device)
+
+            outputs = model(inputs)
+            loss = criterion(outputs, labels)
+            running_loss += loss.item() * inputs.size(0)
+
+            actual_labels = labels.cpu().numpy().flatten()
+            predicted_labels = outputs.cpu().numpy().flatten()
+
+            for j in range(len(actual_labels)):
+                predictions_data.append({
+                    'Actual_Label': actual_labels[j],
+                    'Predicted_Label': predicted_labels[j]
+                })
+
+    final_loss = running_loss / len(dataloader.dataset)
+    print(f"Final {dataset_name.capitalize()} Loss: {final_loss:.6f}")
+
+    # --- Save predictions to CSV ---
+    output_csv_path = os.path.join(output_dir,
+                                   f"{dataset_name}_predictions_{current_time}_{batch_size}_{learning_rate}.csv")
+    with open(output_csv_path, mode='w', newline='') as csv_file:
+        writer = csv.writer(csv_file)
+        fieldnames = ['Actual_Label', 'Predicted_Label']
+        dict_writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+        dict_writer.writeheader()
+        dict_writer.writerows(predictions_data)
+
+    print(f"{dataset_name.capitalize()} predictions saved to {output_csv_path}")
+
+    # --- Plot Results ---
+    if predictions_data:
+        actual_labels_all = [d['Actual_Label'] for d in predictions_data]
+        predicted_labels_all = [d['Predicted_Label'] for d in predictions_data]
+
+        plt.figure(figsize=(8, 8))
+        plt.scatter(actual_labels_all, predicted_labels_all, alpha=0.6, s=10)
+        plt.plot([min(actual_labels_all), max(actual_labels_all)],
+                 [min(actual_labels_all), max(actual_labels_all)],
+                 '--r', label='Ideal Prediction (y=x)')
+        plt.xlabel("Actual Label")
+        plt.ylabel("Predicted Label")
+        plt.title(f"{dataset_name.capitalize()} Set: Actual vs. Predicted Labels")
+        plt.legend()
+        plot_path = os.path.join(output_dir,
+                                 f"{dataset_name}_predictions_plot_{current_time}_{batch_size}_{learning_rate}.png")
+        plt.savefig(plot_path)
+        print(f"{dataset_name.capitalize()} predictions plot saved to {plot_path}")
+        plt.close()
 
 
 # --- Custom Dataset Classes (MODIFIED to use (image_id, alpha_value) as key) ---
@@ -132,13 +206,19 @@ class SplitCrosstalkDataset(Dataset):
 
 # --- End of Custom Dataset Classes ---
 
+def normalize_image(img):
+    img_min, img_max = img.min(), img.max()
+    if img_max > img_min:  # Avoid division by zero
+        return (img - img_min) / (img_max - img_min)
+    else:
+        return img
+
 
 def train_transforms_fn(mixed_np, source_np, scalar_label):
-    # Convert numpy arrays to PyTorch tensors and add channel dimension
-    # Ensure pixel values are normalized to [0, 1] if not already.
-    # IMPORTANT: Apply normalization here by dividing by 255.0 (or max pixel value)
-    mixed_tensor = torch.from_numpy(mixed_np).unsqueeze(0) / 255.0
-    source_tensor = torch.from_numpy(source_np).unsqueeze(0) / 255.0
+    mixed_np = normalize_image(mixed_np)
+    source_np = normalize_image(source_np)
+    mixed_tensor = torch.from_numpy(mixed_np).unsqueeze(0)
+    source_tensor = torch.from_numpy(source_np).unsqueeze(0)
     label_tensor = torch.tensor(scalar_label, dtype=torch.float32).unsqueeze(0)
 
     # Horizontal Flip
@@ -151,81 +231,84 @@ def train_transforms_fn(mixed_np, source_np, scalar_label):
         mixed_tensor = TF.vflip(mixed_tensor)
         source_tensor = TF.vflip(source_tensor)
 
-    img_h, img_w = mixed_tensor.shape[-2:]
+    # img_h, img_w = mixed_tensor.shape[-2:]
+    #
+    # # Affine Transform Parameters:
+    # degrees = random.uniform(-15, 15)
+    # translate_x = random.uniform(-0.1, 0.1) * img_w
+    # translate_y = random.uniform(-0.1, 0.1) * img_h
+    # translate = [translate_x, translate_y]
+    # scale = 1.0
+    # shear = [0.0]
+    # fill = [0.0]
+    #
+    # # Apply the generated affine transform to both tensors
+    # mixed_tensor = TF.affine(
+    #     mixed_tensor,
+    #     angle=degrees,
+    #     translate=translate,
+    #     scale=scale,
+    #     shear=shear,
+    #     interpolation=TF.InterpolationMode.BILINEAR,
+    #     fill=fill
+    # )
+    # source_tensor = TF.affine(
+    #     source_tensor,
+    #     angle=degrees,
+    #     translate=translate,
+    #     scale=scale,
+    #     shear=shear,
+    #     interpolation=TF.InterpolationMode.BILINEAR,
+    #     fill=fill
+    # )
 
-    # Affine Transform Parameters:
-    degrees = random.uniform(-15, 15)
-    translate_x = random.uniform(-0.1, 0.1) * img_w
-    translate_y = random.uniform(-0.1, 0.1) * img_h
-    translate = [translate_x, translate_y]
-    scale = random.uniform(0.8, 1.2)
-    shear = random.uniform(-5, 5)
-
-    # Apply the generated affine transform to both tensors
-    mixed_tensor = TF.affine(
-        mixed_tensor,
-        angle=degrees,
-        translate=translate,
-        scale=scale,
-        shear=shear,
-        interpolation=TF.InterpolationMode.BILINEAR,
-        fill=0.0
-    )
-    source_tensor = TF.affine(
-        source_tensor,
-        angle=degrees,
-        translate=translate,
-        scale=scale,
-        shear=shear,
-        interpolation=TF.InterpolationMode.BILINEAR,
-        fill=0.0
-    )
-
-    # 3. Add Gaussian Noise (applied identically to both images)
-    # Adjust mean and std based on your image intensity range (now 0-1)
-    noise_mean = 0.0
-    noise_std = random.uniform(0.01, 0.05)  # Experiment with this range (e.g., 1-5% of max intensity)
-    gaussian_noise = torch.randn(mixed_tensor.shape) * noise_std + noise_mean
-
-    mixed_tensor = mixed_tensor + gaussian_noise
-    source_tensor = source_tensor + gaussian_noise
-
-    # Clip values to ensure they remain within [0, 1] after adding noise
-    mixed_tensor = torch.clamp(mixed_tensor, 0.0, 1.0)
-    source_tensor = torch.clamp(source_tensor, 0.0, 1.0)
+    # # 3. Add Gaussian Noise (applied identically to both images)
+    # # Adjust mean and std based on your image intensity range (now 0-1)
+    # noise_mean = 0.0
+    # noise_std = random.uniform(0.01, 0.05)  # Experiment with this range (e.g., 1-5% of max intensity)
+    # gaussian_noise = torch.randn(mixed_tensor.shape) * noise_std + noise_mean
+    #
+    # mixed_tensor = mixed_tensor + gaussian_noise
+    # source_tensor = source_tensor + gaussian_noise
+    #
+    # # Clip values to ensure they remain within [0, 1] after adding noise
+    # mixed_tensor = torch.clamp(mixed_tensor, 0.0, 1.0)
+    # source_tensor = torch.clamp(source_tensor, 0.0, 1.0)
 
     # 4. Add Random Erasing (applied identically to both images for consistency)
     # Generate random parameters for erasing once
-    if random.random() < 0.5:  # Probability of applying Random Erasing
-        # Get random parameters for erasing block
-        # i, j: top-left corner coordinates of the erased block
-        # h, w: height and width of the erased block
-        # v: value to fill the erased block with
-        area_ratio = random.uniform(0.02, 0.1)  # Erase 2% to 10% of the image area
-        aspect_ratio = random.uniform(0.3, 3.3)  # Aspect ratio of the erased block
-
-        # Calculate h and w from area_ratio and aspect_ratio
-        h = int(np.sqrt(area_ratio * img_h * img_w / aspect_ratio))
-        w = int(np.sqrt(area_ratio * img_h * img_w * aspect_ratio))
-
-        # Ensure h and w are not zero
-        h = max(1, h)
-        w = max(1, w)
-
-        i = random.randint(0, img_h - h)
-        j = random.randint(0, img_w - w)
-
-        mixed_tensor = TF.erase(
-            mixed_tensor, i, j, h, w, v=0.0
-        )
-        source_tensor = TF.erase(
-            source_tensor, i, j, h, w, v=0.0
-        )
+    # if random.random() < 0.5:  # Probability of applying Random Erasing
+    #     # Get random parameters for erasing block
+    #     # i, j: top-left corner coordinates of the erased block
+    #     # h, w: height and width of the erased block
+    #     # v: value to fill the erased block with
+    #     area_ratio = random.uniform(0.02, 0.1)  # Erase 2% to 10% of the image area
+    #     aspect_ratio = random.uniform(0.3, 3.3)  # Aspect ratio of the erased block
+    #
+    #     # Calculate h and w from area_ratio and aspect_ratio
+    #     h = int(np.sqrt(area_ratio * img_h * img_w / aspect_ratio))
+    #     w = int(np.sqrt(area_ratio * img_h * img_w * aspect_ratio))
+    #
+    #     # Ensure h and w are not zero
+    #     h = max(1, h)
+    #     w = max(1, w)
+    #
+    #     i = random.randint(0, img_h - h)
+    #     j = random.randint(0, img_w - w)
+    #
+    #     mixed_tensor = TF.erase(
+    #         mixed_tensor, i, j, h, w, v=0.0
+    #     )
+    #     source_tensor = TF.erase(
+    #         source_tensor, i, j, h, w, v=0.0
+    #     )
 
     return mixed_tensor, source_tensor, label_tensor
 
 
 def val_test_transforms_fn(mixed_np, source_np, scalar_label):
+    mixed_np = normalize_image(mixed_np)
+    source_np = normalize_image(source_np)
     mixed_tensor = torch.from_numpy(mixed_np).unsqueeze(0)
     source_tensor = torch.from_numpy(source_np).unsqueeze(0)
     label_tensor = torch.tensor(scalar_label, dtype=torch.float32).unsqueeze(0)
@@ -235,33 +318,114 @@ def val_test_transforms_fn(mixed_np, source_np, scalar_label):
 
 # --- End of Transform Functions ---
 
-def train_model(model, train_loader, val_loader, criterion, optimizer, num_epochs, device,
-                log_csv_path='training_log.csv'):
+# Replace your existing train_model function with this enhanced version
+
+def train_model(model, train_loader, val_loader, criterion, optimizer, num_epochs, device, output_dir,
+                learning_scheduler):
+    """Enhanced training function with comprehensive scheduler support"""
+
+    # Choose your scheduler configuration
+    scheduler_configs = {
+        'aggressive_plateau': {
+            'type': 'plateau',
+            'params': {
+                'factor': 0.3,
+                'patience': 3,
+                'threshold': 5e-5,
+                'min_lr': 1e-8
+            },
+            'early_stop_patience': 8
+        },
+
+        'onecycle': {
+            'type': 'onecycle',
+            'params': {
+                'max_lr': 1e-3,  # Start with 2x your current LR
+                'pct_start': 0.3,
+                'anneal_strategy': 'cos',
+                'div_factor': 25.0,
+                'final_div_factor': 1e4,
+                'epochs': num_epochs,
+                'steps_per_epoch': len(train_loader)
+            },
+            'early_stop_patience': 20
+        },
+
+        'cosine_warmup': {
+            'type': 'custom_warmup',
+            'params': {
+                'warmup_epochs': 5,
+                'max_lr': 1e-4,
+                'final_lr': 1e-7,
+                'total_epochs': num_epochs
+            },
+            'early_stop_patience': 15
+        }
+    }
+
+    # Choose which scheduler to use - EXPERIMENT WITH THESE!
+    scheduler_config = scheduler_configs[learning_scheduler]  # Try 'onecycle' or 'cosine_warmup'
+
     train_losses = []
     val_losses = []
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
+    lr_history = []
+
+    # Create scheduler based on type
+    if scheduler_config['type'] == 'plateau':
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, **scheduler_config['params']
+        )
+    elif scheduler_config['type'] == 'onecycle':
+        scheduler = torch.optim.lr_scheduler.OneCycleLR(
+            optimizer, **scheduler_config['params']
+        )
+    elif scheduler_config['type'] == 'cosine':
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=num_epochs, eta_min=1e-8
+        )
 
     model.to(device)
+    best_val_loss = float('inf')
+    epochs_without_improvement = 0
+    early_stop_patience = scheduler_config.get('early_stop_patience', 15)
+
+    # Create the timestamped log filename with scheduler info
+    timestamped_log_file = os.path.join(output_dir,
+                                        f"training_log_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}_{batch_size}_{learning_rate}_{scheduler_config['type']}.csv")
 
     # Prepare the CSV log file
-    with open(log_csv_path, mode='w', newline='') as f:
+    with open(timestamped_log_file, mode='w', newline='') as f:
         writer = csv.writer(f)
-        writer.writerow(['epoch', 'train_loss', 'val_loss'])  # write header
+        writer.writerow(['Learning Rate', learning_rate])
+        writer.writerow(['Batch Size', batch_size])
+        writer.writerow(['Scheduler Type', scheduler_config['type']])
+        writer.writerow(['Scheduler Params', str(scheduler_config['params'])])
+        writer.writerow(['epoch', 'train_loss', 'val_loss', 'learning_rate'])  # write header
 
         for epoch in range(num_epochs):
             model.train()
             train_loss = 0.0
 
-            for inputs, targets in tqdm(train_loader, desc=f"Epoch {epoch + 1}/{num_epochs} [Train]"):
+            # Get current learning rate
+            current_lr = optimizer.param_groups[0]['lr']
+            lr_history.append(current_lr)
+
+            for batch_idx, (inputs, targets) in enumerate(
+                    tqdm(train_loader, desc=f"Epoch {epoch + 1}/{num_epochs} [Train]")):
                 inputs, targets = inputs.to(device), targets.to(device)
 
                 optimizer.zero_grad()
                 outputs = model(inputs)
                 loss = criterion(outputs, targets)
                 loss.backward()
+                # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
                 optimizer.step()
 
                 train_loss += loss.item() * inputs.size(0)
+
+                # Step OneCycleLR after each batch
+                if scheduler_config['type'] == 'onecycle':
+                    scheduler.step()
 
             train_loss /= len(train_loader.dataset)
             train_losses.append(train_loss)
@@ -278,17 +442,51 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, num_epoch
 
             val_loss /= len(val_loader.dataset)
             val_losses.append(val_loss)
-            scheduler.step(val_loss)
 
-            print(f"Epoch [{epoch + 1}/{num_epochs}] | Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f}")
+            # Step scheduler (except OneCycleLR which steps per batch)
+            if scheduler_config['type'] == 'plateau':
+                scheduler.step(val_loss)
+            elif scheduler_config['type'] in ['cosine', 'custom_warmup']:
+                scheduler.step()
+            # OneCycleLR already stepped in training loop
+
+            # Early stopping and best model saving
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                epochs_without_improvement = 0
+                # Save best model
+                best_model_path = os.path.join(output_dir, f"best_model_{scheduler_config['type']}.pth")
+                torch.save(model.state_dict(), best_model_path)
+            else:
+                epochs_without_improvement += 1
+
+            current_lr = optimizer.param_groups[0]['lr']
+            print(
+                f"Epoch [{epoch + 1}/{num_epochs}] | Train Loss: {train_loss:.6f} | Val Loss: {val_loss:.6f} | LR: {current_lr:.2e}")
 
             # Log to CSV
-            writer.writerow([epoch + 1, train_loss, val_loss])
+            writer.writerow([epoch + 1, train_loss, val_loss, current_lr])
+
+            # Early stopping
+            if epochs_without_improvement >= early_stop_patience:
+                print(
+                    f"Early stopping triggered after {epoch + 1} epochs (no improvement for {early_stop_patience} epochs)")
+                break
+
+    # Plot learning rate schedule
+    plt.figure(figsize=(10, 6))
+    plt.plot(lr_history)
+    plt.xlabel('Epoch')
+    plt.ylabel('Learning Rate')
+    plt.title(f'Learning Rate Schedule ({scheduler_config["type"]})')
+    plt.yscale('log')
+    plt.grid(True)
+    lr_plot_path = os.path.join(output_dir, f"lr_schedule_{scheduler_config['type']}.png")
+    plt.savefig(lr_plot_path)
+    plt.close()
+    print(f"Learning rate schedule plot saved to {lr_plot_path}")
 
     return train_losses, val_losses
-
-
-# --- End of Training Function ---
 
 
 if __name__ == "__main__":
@@ -305,6 +503,12 @@ if __name__ == "__main__":
     parser.add_argument("-n", "--num_epochs", type=int, default=50, help="Number of epochs for training")
     parser.add_argument("-t", "--train_ratio", type=float, default=0.7, help="Training data ratio")
     parser.add_argument("-v", "--val_ratio", type=float, default=0.15, help="Validation data ratio")
+    parser.add_argument("-j", "--cpu_jobs", type=int, default=1, help="Number of CPUs to use")
+    parser.add_argument("-o", "--model_options", type=str, default='single', help="Use single- or double-branch model",
+                        choices=['single', 'double'])
+    parser.add_argument("-r", "--learning_scheduler", type=str, default='aggressive_plateau',
+                        help="Use aggressive_plateau, onecycle or cosine_warmup learning scheduler",
+                        choices=['aggressive_plateau', 'onecycle', 'cosine_warmup'])
 
     args = parser.parse_args()
 
@@ -315,6 +519,9 @@ if __name__ == "__main__":
     num_epochs = args.num_epochs
     train_ratio = args.train_ratio
     val_ratio = args.val_ratio
+    ncpus = args.cpu_jobs
+    model_selection = args.model_options
+    learning_scheduler = args.learning_scheduler
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
@@ -322,7 +529,7 @@ if __name__ == "__main__":
     if not (abs(train_ratio + val_ratio) < 1.0):
         print("Warning: Sum of TRAIN_RATIO, VAL_RATIO, TEST_RATIO does not equal 1.0.")
 
-    model = AdvancedRegressionModel()
+    model = RegressionModel()
 
     print("\nCreating dataset instances for initial file listing...")
     try:
@@ -339,7 +546,7 @@ if __name__ == "__main__":
     print("\nSplitting data using filename lists for correct augmentation application...")
     all_samples = temp_dataset.samples  # This now holds the list of dictionaries with all sample info
     total_samples = len(all_samples)
-    torch.manual_seed(42)
+    torch.manual_seed(43)
     shuffled_indices = torch.randperm(total_samples).tolist()
 
     train_size = int(train_ratio * total_samples)
@@ -374,7 +581,7 @@ if __name__ == "__main__":
         train_dataset_final,
         batch_size=batch_size,
         shuffle=True,
-        num_workers=int(os.getenv('SLURM_CPUS_PER_TASK', default=1)),
+        num_workers=ncpus,
         pin_memory=True,
         drop_last=True
     )
@@ -383,7 +590,7 @@ if __name__ == "__main__":
         val_dataset_final,
         batch_size=batch_size,
         shuffle=False,
-        num_workers=int(os.getenv('SLURM_CPUS_PER_TASK', default=1)),
+        num_workers=ncpus,
         pin_memory=True,
         drop_last=True
     )
@@ -392,7 +599,7 @@ if __name__ == "__main__":
         test_dataset_final,
         batch_size=batch_size,
         shuffle=False,
-        num_workers=int(os.getenv('SLURM_CPUS_PER_TASK', default=1)),
+        num_workers=ncpus,
         pin_memory=True,
         drop_last=True
     )
@@ -400,69 +607,25 @@ if __name__ == "__main__":
     print("Dataloaders created for training, validation, and testing.")
 
     criterion = torch.nn.MSELoss()
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-3)
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=1e-4)
 
     print("\nStarting training with validation...")
     train_losses, val_losses = train_model(model, train_dataloader, val_dataloader, criterion, optimizer, num_epochs,
-                                           device)
-
-    plt.plot(train_losses, label="Train Loss")
-    plt.plot(val_losses, label="Val Loss")
-    plt.xlabel("Epoch")
-    plt.ylabel("Loss")
-    plt.legend()
-    plt.title("Training and Validation Loss")
-    plt.savefig('Training_Loss.pdf')
+                                           device, output_dir_name, learning_scheduler)
 
     print("Training finished!")
-
-    model_save_path = "crosstalk_regression_model_trained.pth"
+    current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    model_save_path = os.path.join(output_dir_name,
+                                   f"crosstalk_regression_model_trained_{current_time}_{batch_size}_{learning_rate}.pth")
     torch.save(model.state_dict(), model_save_path)
     print(f"Trained model weights saved to {model_save_path}")
 
     print("\n--- Evaluating Model on Test Set ---")
-    loaded_model = AdvancedRegressionModel()
+    loaded_model = RegressionModel()
     loaded_model.load_state_dict(torch.load(model_save_path, map_location=device))
     loaded_model.eval()
     loaded_model.to(device)
 
-    test_running_loss = 0.0
-    # List to store actual vs. predicted values
-    predictions_data = []
-
-    with torch.no_grad():
-        for i, (inputs, labels) in enumerate(tqdm(test_dataloader, desc="Test Set Evaluation")):
-            inputs = inputs.to(device)
-            labels = labels.to(device)  # Shape: (batch_size, 1)
-
-            outputs = loaded_model(inputs)  # Shape: (batch_size, 1)
-
-            loss = criterion(outputs, labels)
-            test_running_loss += loss.item() * inputs.size(0)
-
-            # Store actual and predicted values
-            # Move tensors to CPU and convert to numpy arrays, then flatten to 1D list
-            actual_labels = labels.cpu().numpy().flatten()
-            predicted_labels = outputs.cpu().numpy().flatten()
-
-            # For each sample in the current batch, append its actual and predicted value
-            for j in range(len(actual_labels)):
-                predictions_data.append({
-                    'Actual_Label': actual_labels[j],
-                    'Predicted_Label': predicted_labels[j]
-                })
-
-    final_test_loss = test_running_loss / len(test_dataloader.dataset)
-    print(f"\nFinal Test Loss: {final_test_loss:.6f}")
-    print("Test set evaluation complete.")
-
-    # --- Save predictions to CSV ---
-    output_csv_path = "test_predictions.csv"
-    with open(output_csv_path, mode='w', newline='') as csv_file:
-        fieldnames = ['Actual_Label', 'Predicted_Label']
-        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
-
-        writer.writeheader()
-        writer.writerows(predictions_data)
-
-    print(f"Test predictions saved to {output_csv_path}")
+    evaluate_and_save(loaded_model, test_dataloader, 'test', output_dir_name)
+    evaluate_and_save(loaded_model, train_dataloader, 'train', output_dir_name)
+    evaluate_and_save(loaded_model, val_dataloader, 'val', output_dir_name)
