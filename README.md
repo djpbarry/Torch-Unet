@@ -34,6 +34,22 @@ To test the pre-trained model (or your own model - see below) on the test data i
 python test-cross-talk-model.py [-h] [-m MIXED_CHANNEL_DATA_DIR] [-s PURE_SOURCE_DATA_DIR] [-p MODEL_PATH] [-j CPU_JOBS] [-o {single,double}]
 ```
 
+A number of options can be specified:
+
+```
+  -h, --help            show this help message and exit
+  -m, --mixed_channel_data_dir MIXED_CHANNEL_DATA_DIR
+                        Directory for mixed channel data
+  -s, --pure_source_data_dir PURE_SOURCE_DATA_DIR
+                        Directory for pure source data
+  -p, --model_path MODEL_PATH
+                        Path to pytorch model
+  -j, --cpu_jobs CPU_JOBS
+                        Number of CPUs to use
+  -o, --model_options {single,double}
+                        Use single- or double-branch model
+```
+
 ## Training
 
 To train a model using default settings on your own data, activate the environment you created above and run the following command:
