@@ -43,7 +43,7 @@ A number of options can be specified:
   -s, --pure_source_data_dir PURE_SOURCE_DATA_DIR
                         Directory for pure source data
   -p, --model_path MODEL_PATH
-                        Path to pytorch model
+                        Path to trained model. To use the model in this repository, set this to ./PreTrained_Model/crosstalk_regression_model_trained_2025-12-15_18-22-01_256_0.0005.pth
   -j, --cpu_jobs CPU_JOBS
                         Number of CPUs to use
   -o, --model_options {single,double}
