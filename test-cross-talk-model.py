@@ -89,22 +89,23 @@ def evaluate_and_save(model, dataloader, dataset_name, output_dir):
     # --- Plot Results ---
     if predictions_data:
         actual_labels_all = [d['Actual_Label'] for d in predictions_data]
-        predicted_labels_all = [d['Predicted_Label'] for d in predictions_data]
+        for f in fieldnames[2:]:
+            metric = [d[f] for d in predictions_data]
 
-        plt.figure(figsize=(8, 8))
-        plt.scatter(actual_labels_all, predicted_labels_all, alpha=0.6, s=10)
-        plt.plot([min(actual_labels_all), max(actual_labels_all)],
-                 [min(actual_labels_all), max(actual_labels_all)],
-                 '--r', label='Ideal Prediction (y=x)')
-        plt.xlabel("Actual Label")
-        plt.ylabel("Predicted Label")
-        plt.title(f"{dataset_name.capitalize()} Set: Actual vs. Predicted Labels")
-        plt.legend()
-        plot_path = os.path.join(output_dir,
-                                 f"{dataset_name}_predictions_plot_{current_time}.png")
-        plt.savefig(plot_path)
-        print(f"{dataset_name.capitalize()} predictions plot saved to {plot_path}")
-        plt.close()
+            plt.figure(figsize=(10, 10))
+            plt.scatter(actual_labels_all, metric, alpha=0.6, s=10)
+            plt.plot([min(actual_labels_all), max(actual_labels_all)],
+                     [min(actual_labels_all), max(actual_labels_all)],
+                     '--r', label='Ideal Prediction (y=x)')
+            plt.xlabel("Actual Label")
+            plt.ylabel(f)
+            plt.title(f"{dataset_name.capitalize()} Set: Actual Labels vs. {f}")
+            plt.legend()
+            plot_path = os.path.join(output_dir,
+                                     f"{dataset_name}_{f}_plot_{current_time}.png")
+            plt.savefig(plot_path)
+            print(f"{dataset_name.capitalize()} {f} plot saved to {plot_path}")
+            plt.close()
 
 
 # --- Custom Dataset Classes (MODIFIED to use (image_id, alpha_value) as key) ---
@@ -215,11 +216,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Script for training with various parameters.")
 
     parser.add_argument("-m", "--mixed_channel_data_dir", type=str,
-                        default="Z:/working/barryd/IDR/crosstalk_training_data_narrow_range/mixed",
+                        default="/nemo/stp/lm/working/barryd/IDR/crosstalk_training_data/bleed",
                         help="Directory for mixed channel data")
     parser.add_argument("-s", "--pure_source_data_dir", type=str,
-                        default="Z:/working/barryd/IDR/crosstalk_training_data_narrow_range/source",
+                        default="/nemo/stp/lm/working/barryd/IDR/crosstalk_training_data/source",
                         help="Directory for pure source data")
+    parser.add_argument("-m", "--model_path", type=str,
+                        default="/nemo/stp/lm/working/barryd/hpc/python/Torch-Unet/training_run_2025-12-15_16-02-16_B256_LR0.0005/crosstalk_regression_model_trained_2025-12-15_18-22-01_256_0.0005.pth",
+                        help="Path to pytorch model")
     parser.add_argument("-j", "--cpu_jobs", type=int, default=20, help="Number of CPUs to use")
     parser.add_argument("-o", "--model_options", type=str, default='single', help="Use single- or double-branch model",
                         choices=['single', 'double'])
@@ -228,6 +232,7 @@ if __name__ == "__main__":
 
     mixed_channel_data_dir = args.mixed_channel_data_dir
     pure_source_data_dir = args.pure_source_data_dir
+    model_save_path = args.model_path
     ncpus = args.cpu_jobs
     model_selection = args.model_options
 
@@ -294,7 +299,6 @@ if __name__ == "__main__":
     criterion = torch.nn.MSELoss()
 
     current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    model_save_path = 'H:/GitRepos/Python/image_qc/crosstalk_model/crosstalk_regression_model_trained_2025-08-21_01-02-53_256_0.0005.pth'
 
     print("\n--- Evaluating Model ---")
     if model_selection == 'double':
