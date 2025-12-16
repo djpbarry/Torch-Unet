@@ -55,7 +55,7 @@ A number of options can be specified:
 To train a model using default settings on your own data, activate the environment you created above and run the following command:
 
 ```
-python Train_U-Net.py [-h] [-m MIXED_CHANNEL_DATA_DIR] [-s PURE_SOURCE_DATA_DIR] [-b BATCH_SIZE] [-l LEARNING_RATE] [-n NUM_EPOCHS] [-t TRAIN_RATIO] [-v VAL_RATIO] [-j CPU_JOBS] [-o {single,double}] [-r {aggressive_plateau,onecycle,cosine_warmup}]
+python train_model.py [-h] [-m MIXED_CHANNEL_DATA_DIR] [-s PURE_SOURCE_DATA_DIR] [-b BATCH_SIZE] [-l LEARNING_RATE] [-n NUM_EPOCHS] [-t TRAIN_RATIO] [-v VAL_RATIO] [-j CPU_JOBS] [-o {single,double}] [-r {aggressive_plateau,onecycle,cosine_warmup}]
 ```
 
 A number of options can be specified to control the training process:
