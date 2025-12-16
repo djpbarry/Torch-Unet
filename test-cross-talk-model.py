@@ -106,7 +106,7 @@ def evaluate_and_save(model, dataloader, dataset_name, output_dir):
             metric = [d[f] for d in predictions_data]
 
             plt.figure(figsize=(10, 10))
-            plt.scatter(actual_labels_all, metric, alpha=0.6, s=10)
+            plt.scatter(actual_labels_all, metric, alpha=0.05, s=5)
             plt.plot([min(actual_labels_all), max(actual_labels_all)],
                      [min(actual_labels_all), max(actual_labels_all)],
                      '--r', label='Ideal Prediction (y=x)')
