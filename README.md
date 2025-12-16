@@ -26,7 +26,38 @@ conda deactivate
 ```
 You have successfully set up your environment!
 
-
 ## Training
+
+To train a model using default settings on your own data, activate the environment you created above and run the following command:
+
+```
+python Train_U-Net.py
+```
+
+A number of options can be specified to control the training process:
+
+```
+  -h, --help            show this help message and exit
+  -m, --mixed_channel_data_dir MIXED_CHANNEL_DATA_DIR
+                        Directory for mixed channel data
+  -s, --pure_source_data_dir PURE_SOURCE_DATA_DIR
+                        Directory for pure source data
+  -b, --batch_size BATCH_SIZE
+                        Batch size for training
+  -l, --learning_rate LEARNING_RATE
+                        Learning rate for training
+  -n, --num_epochs NUM_EPOCHS
+                        Number of epochs for training
+  -t, --train_ratio TRAIN_RATIO
+                        Training data ratio
+  -v, --val_ratio VAL_RATIO
+                        Validation data ratio
+  -j, --cpu_jobs CPU_JOBS
+                        Number of CPUs to use
+  -o, --model_options {single,double}
+                        Use single- or double-branch model
+  -r, --learning_scheduler {aggressive_plateau,onecycle,cosine_warmup}
+                        Use aggressive_plateau, onecycle or cosine_warmup learning scheduler
+```
 
 ## Testing
