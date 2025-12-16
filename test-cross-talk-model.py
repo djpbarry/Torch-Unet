@@ -10,7 +10,7 @@ import numpy as np
 import torch
 from scipy.stats import pearsonr
 from skimage.metrics import structural_similarity as ssim
-from sklearn.feature_selection import mutual_info_regression
+from sklearn.metrics import normalized_mutual_info_score
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
@@ -59,6 +59,10 @@ def evaluate_and_save(model, dataloader, dataset_name, output_dir):
                 hist_p, p1 = pearsonr(np.histogram(images[j][0].flatten(), bins=256)[0],
                                       np.histogram(images[j][1].flatten(), bins=256)[0])
                 image_p, p2 = pearsonr(images[j][0].flatten(), images[j][1].flatten())
+                img1_binned = np.digitize(images[j][0].flatten(),
+                                          bins=np.linspace(images[j][0].min(), images[j][0].max(), 256))
+                img2_binned = np.digitize(images[j][1].flatten(),
+                                          bins=np.linspace(images[j][1].min(), images[j][1].max(), 256))
                 predictions_data.append({
                     fieldnames[0]: image_ids[j],
                     fieldnames[1]: actual_labels[j],
@@ -68,7 +72,7 @@ def evaluate_and_save(model, dataloader, dataset_name, output_dir):
                                         data_range=np.max([images[j][0].max(), images[j][1].max()])
                                                    - np.min([images[j][0].min(), images[j][1].min()])),
                     fieldnames[5]: hist_p,
-                    fieldnames[6]: mutual_info_regression(images[j][0].flatten(), images[j][1].flatten()),
+                    fieldnames[6]: normalized_mutual_info_score(img1_binned, img2_binned),
                     fieldnames[7]: image_p
                 })
 
