@@ -270,8 +270,7 @@ if __name__ == "__main__":
         # No label_mapping_file needed, as labels are derived from filenames
         temp_dataset = CrosstalkDataset(
             mixed_channel_data_dir, pure_source_data_dir,
-            transform=val_test_transforms_fn,
-            max_samples=100
+            transform=val_test_transforms_fn
         )
         print(f"Total samples found in directories: {len(temp_dataset)}")
     except Exception as e:
