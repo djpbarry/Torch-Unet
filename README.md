@@ -6,7 +6,7 @@
 
 We recommend using conda as it's relatively straightforward and makes the management of different Python environments simple. You can install conda from [here](https://conda.io/projects/conda/en/latest/user-guide/install/index.html#regular-installation) (miniconda will suffice).
 
-## Step 2: Set Up Environment
+### Step 2: Set Up Environment
 
 Once conda is installed, open a terminal (Mac) or AnaConda Prompt (Windows) and run the following series of commands:
 
