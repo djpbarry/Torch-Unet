@@ -495,10 +495,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Script for training with various parameters.")
 
     parser.add_argument("-m", "--mixed_channel_data_dir", type=str,
-                        default="/nemo/stp/lm/working/barryd/IDR/crosstalk_training_data/bleed",
+                        default="./Training_Data/Mixed",
                         help="Directory for mixed channel data")
     parser.add_argument("-s", "--pure_source_data_dir", type=str,
-                        default="/nemo/stp/lm/working/barryd/IDR/crosstalk_training_data/source",
+                        default="./Training_Data/Source",
                         help="Directory for pure source data")
     parser.add_argument("-b", "--batch_size", type=int, default=256, help="Batch size for training")
     parser.add_argument("-l", "--learning_rate", type=float, default=1e-4, help="Learning rate for training")
