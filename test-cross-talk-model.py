@@ -10,7 +10,7 @@ import numpy as np
 import torch
 from scipy.stats import pearsonr
 from skimage.metrics import structural_similarity as ssim
-from sklearn.metrics import normalized_mutual_info_score
+from sklearn.feature_selection import mutual_info_regression
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
@@ -68,7 +68,7 @@ def evaluate_and_save(model, dataloader, dataset_name, output_dir):
                                         data_range=np.max([images[j][0].max(), images[j][1].max()])
                                                    - np.min([images[j][0].min(), images[j][1].min()])),
                     fieldnames[5]: hist_p,
-                    fieldnames[6]: normalized_mutual_info_score(images[j][0].flatten(), images[j][1].flatten()),
+                    fieldnames[6]: mutual_info_regression(images[j][0].flatten(), images[j][1].flatten()),
                     fieldnames[7]: image_p
                 })
 
