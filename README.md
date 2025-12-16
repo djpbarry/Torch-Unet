@@ -26,12 +26,20 @@ conda deactivate
 ```
 You have successfully set up your environment!
 
+## Evaluation
+
+To test the pre-trained model (or your own model - see below) on the test data in this repo, and compare to other metrics such as Pearson's Correlation Coefficient, activate the environment you created above and run the following command:
+
+```
+python test-cross-talk-model.py [-h] [-m MIXED_CHANNEL_DATA_DIR] [-s PURE_SOURCE_DATA_DIR] [-p MODEL_PATH] [-j CPU_JOBS] [-o {single,double}]
+```
+
 ## Training
 
 To train a model using default settings on your own data, activate the environment you created above and run the following command:
 
 ```
-python Train_U-Net.py
+python Train_U-Net.py [-h] [-m MIXED_CHANNEL_DATA_DIR] [-s PURE_SOURCE_DATA_DIR] [-b BATCH_SIZE] [-l LEARNING_RATE] [-n NUM_EPOCHS] [-t TRAIN_RATIO] [-v VAL_RATIO] [-j CPU_JOBS] [-o {single,double}] [-r {aggressive_plateau,onecycle,cosine_warmup}]
 ```
 
 A number of options can be specified to control the training process:
@@ -59,5 +67,3 @@ A number of options can be specified to control the training process:
   -r, --learning_scheduler {aggressive_plateau,onecycle,cosine_warmup}
                         Use aggressive_plateau, onecycle or cosine_warmup learning scheduler
 ```
-
-## Testing
