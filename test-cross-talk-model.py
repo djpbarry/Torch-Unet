@@ -221,7 +221,7 @@ if __name__ == "__main__":
     parser.add_argument("-s", "--pure_source_data_dir", type=str,
                         default="/nemo/stp/lm/working/barryd/IDR/crosstalk_training_data/source",
                         help="Directory for pure source data")
-    parser.add_argument("-m", "--model_path", type=str,
+    parser.add_argument("-p", "--model_path", type=str,
                         default="/nemo/stp/lm/working/barryd/hpc/python/Torch-Unet/training_run_2025-12-15_16-02-16_B256_LR0.0005/crosstalk_regression_model_trained_2025-12-15_18-22-01_256_0.0005.pth",
                         help="Path to pytorch model")
     parser.add_argument("-j", "--cpu_jobs", type=int, default=20, help="Number of CPUs to use")
