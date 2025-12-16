@@ -56,9 +56,18 @@ def evaluate_and_save(model, dataloader, dataset_name, output_dir):
             predicted_labels = outputs.cpu().numpy().flatten()
 
             for j in range(len(actual_labels)):
-                hist_p, p1 = pearsonr(np.histogram(images[j][0].flatten(), bins=256)[0],
-                                      np.histogram(images[j][1].flatten(), bins=256)[0])
-                image_p, p2 = pearsonr(images[j][0].flatten(), images[j][1].flatten())
+                img1_flat = images[j][0].flatten()
+                img2_flat = images[j][1].flatten()
+                if np.std(img1_flat) == 0 or np.std(img2_flat) == 0:
+                    image_p = np.nan
+                else:
+                    image_p, p2 = pearsonr(img1_flat, img2_flat)
+                hist1 = np.histogram(images[j][0].flatten(), bins=256)[0]
+                hist2 = np.histogram(images[j][1].flatten(), bins=256)[0]
+                if np.std(hist1) == 0 or np.std(hist2) == 0:
+                    hist_p = np.nan
+                else:
+                    hist_p, p1 = pearsonr(hist1, hist2)
                 img1_binned = np.digitize(images[j][0].flatten(),
                                           bins=np.linspace(images[j][0].min(), images[j][0].max(), 256))
                 img2_binned = np.digitize(images[j][1].flatten(),
