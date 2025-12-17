@@ -1,4 +1,4 @@
-# A Regression Model to Detect CrossTalk in Microscopy Images
+# CrosstalkPy: A Python Package to Detect CrossTalk in Microscopy Images
 
 ## Setup
 
